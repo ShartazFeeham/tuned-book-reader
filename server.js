@@ -457,9 +457,13 @@ const server = http.createServer((req, res) => {
 
       const pageNum = u[4];
       const file = u[5] || 'bangla.md';
-      if (!['bangla.md', 'gvrow.txt', 'photo.jpg'].includes(file)) return send(res, 400, 'text/plain', 'bad file');
+      if (!['bangla.md', 'richtext.md', 'gvrow.txt', 'photo.jpg'].includes(file)) return send(res, 400, 'text/plain', 'bad file');
 
-      const target = path.join(volPath, pageNum, file);
+      let target = path.join(volPath, pageNum, file);
+      if (!fs.existsSync(target) && file === 'bangla.md') {
+        const alt = path.join(volPath, pageNum, 'richtext.md');
+        if (fs.existsSync(alt)) target = alt;
+      }
       if (!fs.existsSync(target)) return send(res, 404, 'text/plain', 'not found');
       return send(res, 200, file.endsWith('.jpg') ? 'image/jpeg' : 'text/plain; charset=utf-8', fs.readFileSync(target));
     }

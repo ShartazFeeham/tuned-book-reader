@@ -18,6 +18,7 @@ import {
   setPronMode,
   spoken,
   updateMediaSession,
+  addPronunciationOverride,
 } from './speech.js';
 import {
   getPreferences,
@@ -256,9 +257,20 @@ export default function App() {
     fetch('/flagged.json')
       .then(r => (r.ok ? r.json() : []))
       .then(fList => {
-        setFlaggedSet(new Set(fList.map(w => w.normalize('NFC'))));
+        let local = [];
+        try {
+          local = JSON.parse(localStorage.getItem('custom_flagged') || '[]');
+        } catch {}
+        const merged = new Set([...(Array.isArray(fList) ? fList : []), ...local].map(w => w.normalize('NFC')));
+        setFlaggedSet(merged);
       })
-      .catch(() => {});
+      .catch(() => {
+        let local = [];
+        try {
+          local = JSON.parse(localStorage.getItem('custom_flagged') || '[]');
+        } catch {}
+        setFlaggedSet(new Set(local.map(w => w.normalize('NFC'))));
+      });
   }, []);
 
   // Listen for browser Back/Forward (popstate)
@@ -341,19 +353,29 @@ export default function App() {
       // Try API endpoint first
       try {
         const res = await fetch(`/api/books/${selectedBook.id}/${vol}/${currentPage}/bangla.md`);
-        if (res.ok) bangla = await res.text();
+        if (res.ok) {
+          const txt = await res.text();
+          if (txt && !txt.trim().startsWith('<!doctype html') && !txt.trim().startsWith('<html')) {
+            bangla = txt;
+          }
+        }
       } catch {}
 
       // Fallback to static bundled asset (Netlify support)
       if (!bangla) {
         try {
           const sRes = await fetch(`/data/books/${selectedBook.id}/${vol}/${currentPage}.md`);
-          if (sRes.ok) bangla = await sRes.text();
+          if (sRes.ok) {
+            const txt = await sRes.text();
+            if (txt && !txt.trim().startsWith('<!doctype html') && !txt.trim().startsWith('<html')) {
+              bangla = txt;
+            }
+          }
         } catch {}
       }
 
       if (!isLive) return;
-      const textToUse = bangla || '(পৃষ্ঠার অনুবাদ লোড করা যায়নি)';
+      const textToUse = bangla || '(পৃষ্ঠার বিষয়বস্তু লোড করা যায়নি)';
       setRawText(textToUse);
 
       // Update URL
@@ -554,6 +576,9 @@ export default function App() {
       setFlaggedSet(prev => {
         const next = new Set(prev);
         next.delete(word);
+        try {
+          localStorage.setItem('custom_flagged', JSON.stringify([...next]));
+        } catch {}
         return next;
       });
       fetch('/unflag', {
@@ -562,7 +587,13 @@ export default function App() {
         body: JSON.stringify({ word }),
       }).catch(() => {});
     } else {
-      setFlaggedSet(prev => new Set(prev).add(word));
+      setFlaggedSet(prev => {
+        const next = new Set(prev).add(word);
+        try {
+          localStorage.setItem('custom_flagged', JSON.stringify([...next]));
+        } catch {}
+        return next;
+      });
       fetch('/flag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -578,11 +609,67 @@ export default function App() {
     }
   };
 
+  const handleToggleModalFlag = (word, raw, loc) => {
+    if (!word) return;
+    const isFlagged = flaggedSet.has(word);
+    handleFlagWord({
+      word,
+      raw,
+      book: loc?.book || selectedBook?.id,
+      volume: loc?.volume || vol,
+      page: loc?.page || currentPage,
+      paragraph: loc?.paragraph || 0,
+      wordIndex: loc?.wordIndex || 0,
+    });
+    if (respellPop) {
+      setRespellPop(p => (p ? { ...p, isFlagged: !isFlagged } : null));
+    }
+  };
+
   // Respell suggestion answer
-  const handleRespellAnswer = async keep => {
+  const handleRespellAnswer = async (keep, customVal) => {
     if (!respellPop) return;
+
+    if (keep === 'custom') {
+      const form = (customVal || '').trim();
+      setRespellPop(null);
+      if (form && form !== respellPop.start) {
+        const targetRaw = respellPop.raw || respellPop.word;
+        addPronunciationOverride(targetRaw, form);
+        await fetch('/respell', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: targetRaw, to: form }),
+        }).catch(() => {});
+        setLexVersion(v => v + 1);
+
+        const shownWord = origText
+          ? respellPop.start
+          : spoken(targetRaw).normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0];
+        if (shownWord) {
+          setFlaggedSet(f => {
+            const next = new Set(f).add(shownWord);
+            try {
+              localStorage.setItem('custom_flagged', JSON.stringify([...next]));
+            } catch {}
+            return next;
+          });
+          fetch('/flag', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              word: shownWord,
+              suggestion: form,
+              ...respellPop.loc,
+            }),
+          }).catch(() => {});
+        }
+      }
+      return;
+    }
+
     const form = keep ? respellPop.sug : respellPop.form;
-    const nextSug = nextSuggestion(form, respellPop.phase, respellPop.slot + 1);
+    const nextSug = nextSuggestion(form, respellPop.phase, (respellPop.slot ?? 0) + 1);
 
     if (nextSug) {
       setRespellPop({
@@ -597,20 +684,27 @@ export default function App() {
 
     setRespellPop(null);
 
-    if (form !== respellPop.start) {
+    if (form && form !== respellPop.start) {
+      const targetRaw = respellPop.raw || respellPop.word;
+      addPronunciationOverride(targetRaw, form);
       await fetch('/respell', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word: respellPop.raw, to: form }),
+        body: JSON.stringify({ word: targetRaw, to: form }),
       }).catch(() => {});
-      await loadLexicon();
       setLexVersion(v => v + 1);
 
       const shownWord = origText
         ? respellPop.start
-        : spoken(respellPop.raw).normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0];
+        : spoken(targetRaw).normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0];
       if (shownWord) {
-        setFlaggedSet(f => new Set(f).add(shownWord));
+        setFlaggedSet(f => {
+          const next = new Set(f).add(shownWord);
+          try {
+            localStorage.setItem('custom_flagged', JSON.stringify([...next]));
+          } catch {}
+          return next;
+        });
         fetch('/flag', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -914,6 +1008,7 @@ export default function App() {
       <RespellModal
         pop={respellPop}
         onAnswer={handleRespellAnswer}
+        onToggleFlag={handleToggleModalFlag}
         onClose={() => setRespellPop(null)}
       />
     </div>

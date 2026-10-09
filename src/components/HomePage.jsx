@@ -148,7 +148,7 @@ export function HomePage({
       <footer className="home-footer">
         <button className="dev-link" onClick={onOpenDevMode}>
           <Terminal size={15} />
-          <span>দেব মোড · চিহ্নিত ও সংশোধিত শব্দসমূহ</span>
+          <span>ডেভ মোড · চিহ্নিত ও সংশোধিত শব্দসমূহ</span>
         </button>
       </footer>
     </div>

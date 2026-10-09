@@ -27,8 +27,7 @@ export function normalizePage(p) {
 // And also comma separated `?vol=28,page=100,word=আলি,place=3`
 export function parseCurrentUrl() {
   const url = new URL(window.location.href);
-  const pathParts = url.pathname.split('/').filter(Boolean);
-  const search = url.search.startsWith('?') ? url.search.slice(1) : url.search;
+  const search = (url.search || '').replace(/^\?+/, '');
 
   const params = {};
 
@@ -102,9 +101,8 @@ export function buildUrl({ view = 'home', bookId, vol, page, word, place }) {
   if (bookId) searchParams.set('book', bookId);
 
   if (view === 'book-detail') {
-    url.pathname = '/';
-    url.search = searchParams.toString();
-    return url.pathname + (url.search ? '?' + url.search : '');
+    const q = searchParams.toString();
+    return '/' + (q ? '?' + q : '');
   }
 
   if (vol) {
@@ -122,9 +120,8 @@ export function buildUrl({ view = 'home', bookId, vol, page, word, place }) {
     }
   }
 
-  url.pathname = '/';
-  url.search = searchParams.toString();
-  return url.pathname + (url.search ? '?' + url.search : '');
+  const query = searchParams.toString();
+  return '/' + (query ? '?' + query : '');
 }
 
 export function updateUrl(state, replace = false) {

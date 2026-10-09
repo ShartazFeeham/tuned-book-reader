@@ -72,8 +72,17 @@ function bundle() {
       if (!fs.existsSync(volDest)) fs.mkdirSync(volDest, { recursive: true });
 
       for (const p of pageDirs) {
-        const mdFile = path.join(pagesDir, p, 'bangla.md');
-        if (fs.existsSync(mdFile)) {
+        const pDir = path.join(pagesDir, p);
+        const candidates = ['bangla.md', 'richtext.md', 'page.md', 'text.md'];
+        let mdFile = null;
+        for (const c of candidates) {
+          const testPath = path.join(pDir, c);
+          if (fs.existsSync(testPath)) {
+            mdFile = testPath;
+            break;
+          }
+        }
+        if (mdFile) {
           pages.push(p);
           const outMd = path.join(volDest, `${p}.md`);
           fs.copyFileSync(mdFile, outMd);

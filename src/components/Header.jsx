@@ -85,7 +85,7 @@ export function Header({
           </div>
         )}
         {view === 'dev' && (
-          <div className="header-title">দেব মোড · চিহ্নিত শব্দ তালিকা</div>
+          <div className="header-title">ডেভ মোড · চিহ্নিত শব্দ তালিকা</div>
         )}
       </div>
 

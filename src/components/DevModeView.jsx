@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Terminal, Trash2, ExternalLink, RefreshCw } from 'lucide-react';
+import { toBnNum } from '../lib/storage.js';
 
 export function DevModeView({ onBackToHome, onJumpToLocation }) {
   const [flaggedWords, setFlaggedWords] = useState([]);
@@ -43,27 +44,27 @@ export function DevModeView({ onBackToHome, onJumpToLocation }) {
   return (
     <div className="dev-view">
       <button className="back-btn" onClick={onBackToHome}>
-        <ArrowLeft size={16} /> Back to Library
+        <ArrowLeft size={16} /> লাইব্রেরিতে ফিরুন
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <h1 style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
             <Terminal size={20} color="var(--accent)" />
-            Dev Mode · Flagged Words & Pronunciations
+            ডেভ মোড · চিহ্নিত ও সংশোধিত শব্দসমূহ
           </h1>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            All words flagged during reading or double-clicked for phonetic correction
+            পড়ার সময় চিহ্নিত বা উচ্চারণের সুবিধার্থে সংরক্ষিত শব্দের অবস্থান ও তালিকা
           </p>
         </div>
-        <button className="icon-btn" onClick={loadData} title="Refresh data">
+        <button className="icon-btn" onClick={loadData} title="রিফ্রেশ করুন">
           <RefreshCw size={18} />
         </button>
       </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-          Loading marked words…
+          চিহ্নিত শব্দের তালিকা লোড হচ্ছে…
         </div>
       ) : whereList.length === 0 && flaggedWords.length === 0 ? (
         <div
@@ -76,9 +77,9 @@ export function DevModeView({ onBackToHome, onJumpToLocation }) {
             color: 'var(--text-secondary)',
           }}
         >
-          No words have been marked or flagged yet.
+          এখনো কোনো শব্দ চিহ্নিত বা ফ্ল্যাগ করা হয়নি।
           <div style={{ fontSize: '0.82rem', marginTop: 6, color: 'var(--text-muted)' }}>
-            Double-click any word while reading in Refined mode to flag and suggest pronunciation corrections.
+            পরিশোধিত পাঠ পড়ার সময় যেকোনো শব্দে ডাবল ক্লিক করে উচ্চারণ সংশোধন বা ফ্ল্যাগ করা যায়।
           </div>
         </div>
       ) : (
@@ -86,16 +87,16 @@ export function DevModeView({ onBackToHome, onJumpToLocation }) {
           <table className="dev-table">
             <thead>
               <tr>
-                <th>Word / Text</th>
-                <th>Suggestion</th>
-                <th>Book & Volume</th>
-                <th>Page · ¶</th>
-                <th>Action</th>
+                <th>শব্দ / পাঠ</th>
+                <th>সংশোধন প্রস্তাব</th>
+                <th>কিতাব ও খণ্ড</th>
+                <th>পৃষ্ঠা · অনুচ্ছেদ</th>
+                <th>পদক্ষেপ</th>
               </tr>
             </thead>
             <tbody>
               {whereList.map((item, idx) => {
-                const volLabel = item.volume ? item.volume.replace('-', ' ').toUpperCase() : '';
+                const volLabel = item.volume ? item.volume.replace(/^volume-0?/, 'খণ্ড ') : '';
                 const pageNum = parseInt(item.page, 10);
 
                 return (
@@ -109,11 +110,11 @@ export function DevModeView({ onBackToHome, onJumpToLocation }) {
                       {item.suggestion || '—'}
                     </td>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{item.book || 'tarikh-at-tabari'}</div>
+                      <div style={{ fontWeight: 600 }}>{item.book === 'tarikh-at-tabari' ? 'তারীখে তাবারী' : (item.book || 'তারীখে তাবারী')}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{volLabel}</div>
                     </td>
                     <td>
-                      Page {pageNum} · ¶{item.paragraph + 1}
+                      পৃষ্ঠা {toBnNum(pageNum)} · ¶{toBnNum(item.paragraph + 1)}
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -129,16 +130,16 @@ export function DevModeView({ onBackToHome, onJumpToLocation }) {
                               word: item.word,
                             })
                           }
-                          title="Jump to reading location"
+                          title="এই পৃষ্ঠায় যান"
                         >
                           <ExternalLink size={12} />
-                          <span>Jump</span>
+                          <span>যান</span>
                         </button>
                         <button
                           className="icon-btn"
                           style={{ width: 28, height: 28, color: 'var(--flagged)' }}
                           onClick={e => handleUnflag(item.word, e)}
-                          title="Clear / Unflag word"
+                          title="চিহ্ন মুছে ফেলুন"
                         >
                           <Trash2 size={14} />
                         </button>

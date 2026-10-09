@@ -71,15 +71,41 @@ export const setPronMode = m => {
   pronMode = m;
 };
 
+let cachedRefined = null;
+let cachedHandMade = null;
+
+export function getCustomOverrides() {
+  try {
+    return JSON.parse(localStorage.getItem('custom_respell') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+export function addPronunciationOverride(word, to) {
+  const overrides = getCustomOverrides();
+  overrides[word] = to;
+  try {
+    localStorage.setItem('custom_respell', JSON.stringify(overrides));
+  } catch {}
+  if (cachedRefined || cachedHandMade) {
+    forVoice = buildForVoice(cachedRefined || {}, { ...(cachedHandMade || {}), ...overrides });
+  }
+}
+
 export async function loadLexicon() {
   try {
     const [refined, handMade] = await Promise.all([
-      fetch('/pronounce.json').then(r => r.json()),
-      fetch('/pronounce-explicit.json').then(r => r.json()).catch(() => null),
+      fetch('/pronounce.json').then(r => (r.ok ? r.json() : {})).catch(() => ({})),
+      fetch('/pronounce-explicit.json').then(r => (r.ok ? r.json() : {})).catch(() => ({})),
     ]);
-    forVoice = buildForVoice(refined, handMade);
+    cachedRefined = refined || {};
+    cachedHandMade = handMade || {};
+    const overrides = getCustomOverrides();
+    forVoice = buildForVoice(cachedRefined, { ...cachedHandMade, ...overrides });
   } catch {
-    forVoice = t => t;
+    const overrides = getCustomOverrides();
+    forVoice = buildForVoice({}, overrides);
   }
 }
 

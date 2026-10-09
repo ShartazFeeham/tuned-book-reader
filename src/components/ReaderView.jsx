@@ -15,6 +15,12 @@ export function toChunks(raw, orig) {
   if (!raw) return [];
   let t = raw;
 
+  // Always strip comments, HTML tags, and markdown horizontal rules
+  t = t
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\/?[a-zA-Z0-9]+[^>]*>/g, '')
+    .replace(/^-{3,}$/gm, '');
+
   if (!orig) {
     const notes = new Set(
       [...(raw.split(/\n\s*\*\*টীকা\*\*/)[1]?.matchAll(/^\s*([০-৯0-9]+)[.।]/gm) ?? [])].map(m => m[1])
@@ -24,11 +30,8 @@ export function toChunks(raw, orig) {
         notes.has(n) ? '' : m
       );
     }
-  }
 
-  if (!orig) {
     t = t
-      .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\n+\s*\*\*টীকা\*\*[\s\S]*$/, '')
       .replace(/\[\^[০-৯0-9]+\]|\^\{[০-৯0-9]+\}|\^[০-৯0-9]+/g, '')
       .replace(/\s*\[[০-৯0-9]+\]/g, '')
@@ -53,7 +56,10 @@ export function toChunks(raw, orig) {
       .replace(/।"/g, '"।')
       .replace(/।(["”’')]*)[ \t]+(?=\S)/g, '$1\n\n');
   } else {
-    t = t.replace(/।"/g, '"।').replace(/।(["”’')]*)[ \t]+(?=\S)/g, '$1\n\n');
+    t = t
+      .replace(/\*\*|^#+\s*/gm, '')
+      .replace(/।"/g, '"।')
+      .replace(/।(["”’')]*)[ \t]+(?=\S)/g, '$1\n\n');
   }
 
   const chunks = t
@@ -108,11 +114,15 @@ export function ReaderView({
   }, [highlightedJumpPara]);
 
   const wordIndexAt = (el, node, offset) => {
-    const r = document.createRange();
-    r.setStart(el, 0);
-    r.setEnd(node, offset);
-    const pre = r.toString();
-    return pre.split(/\s+/).filter(Boolean).length - (/\S$/.test(pre) ? 1 : 0);
+    try {
+      const r = document.createRange();
+      r.setStart(el, 0);
+      r.setEnd(node, offset);
+      const pre = r.toString();
+      return pre.split(/\s+/).filter(Boolean).length - (/\S$/.test(pre) ? 1 : 0);
+    } catch {
+      return 0;
+    }
   };
 
   const rawIndex = (k, w) => {
@@ -123,7 +133,7 @@ export function ReaderView({
     else {
       for (i = 0; i < toks.length && shownCount(i) < w; i++);
     }
-    return { toks, i: Math.min(i, toks.length - 1) };
+    return { toks, i: Math.max(0, Math.min(i, toks.length - 1)) };
   };
 
   const pressEnd = () => clearTimeout(press.current.t);
@@ -171,63 +181,79 @@ export function ReaderView({
     }
   };
 
-  const dblPara = (k, e) => {
-    const sel = window.getSelection();
-    const word = sel?.toString().trim();
-    if (!word) return;
-
-    seq.current++;
-    navigator.clipboard?.writeText(word).catch(() => {});
-
-    const w = wordIndexAt(e.currentTarget, sel.anchorNode, Math.min(sel.anchorOffset, sel.focusOffset));
-    const bn = word.normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0];
-
-    const { toks, i } = rawIndex(k, w);
-    const raw1 = (toks[i] || '').normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0];
-
-    onFlagWord({
-      word: bn || word,
-      raw: raw1,
-      book: bookId,
-      volume: vol,
-      page,
-      paragraph: k,
-      wordIndex: w,
-    });
-
-    if (raw1 && !/[০-৯]/.test(raw1)) {
-      const start = origText ? raw1 : spoken(raw1).match(/[\u0980-\u09FF]+/)?.[0] || raw1;
-      const q = nextSuggestion(start);
-      if (q) {
-        onOpenRespell({
-          x: e.clientX,
-          y: e.clientY,
-          loc: { book: bookId, volume: vol, page, paragraph: k, wordIndex: w },
-          raw: raw1,
-          start,
-          form: start,
-          phase: q.phase,
-          slot: q.slot,
-          sug: q.form,
-        });
-      }
+  const handleWordAction = (k, wIdx, tok, e, isDbl = false) => {
+    e.stopPropagation();
+    pressEnd();
+    if (press.current.done) {
+      press.current.done = false;
+      return;
     }
+
+    const bn = tok.normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0];
+    if (!bn) return;
+
+    if (isDbl) {
+      navigator.clipboard?.writeText(tok).catch(() => {});
+    }
+
+    const { toks, i } = rawIndex(k, wIdx);
+    const rawWord = (toks[i] || tok).normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0] || tok;
+    const isFlagged = flaggedSet.has(bn) || flaggedSet.has(rawWord);
+
+    if (isDbl) {
+      // Toggle flag on double click
+      onFlagWord({
+        word: bn,
+        raw: rawWord,
+        book: bookId,
+        volume: vol,
+        page,
+        paragraph: k,
+        wordIndex: wIdx,
+      });
+    }
+
+    const start = origText ? rawWord : spoken(rawWord).match(/[\u0980-\u09FF]+/)?.[0] || rawWord;
+    const q = nextSuggestion(start);
+
+    onOpenRespell({
+      x: e.clientX,
+      y: e.clientY,
+      loc: { book: bookId, volume: vol, page, paragraph: k, wordIndex: wIdx },
+      word: bn,
+      raw: rawWord,
+      start,
+      form: start,
+      phase: q?.phase || null,
+      slot: q?.slot ?? null,
+      sug: q?.form || null,
+      isFlagged,
+    });
   };
 
-  const renderFormattedParagraph = text => {
-    return text
-      .normalize('NFC')
-      .split(/([\u0980-\u09FF]+)/)
-      .map((tok, idx) => {
-        if (flaggedSet.has(tok)) {
-          return (
-            <span key={idx} className="flag">
-              {tok}
-            </span>
-          );
-        }
-        return tok;
-      });
+  const renderFormattedParagraph = (chunk, k) => {
+    const tokens = chunk.normalize('NFC').split(/([\u0980-\u09FF]+)/);
+    let wordCounter = 0;
+
+    return tokens.map((tok, idx) => {
+      const isWord = /^[\u0980-\u09FF]+$/.test(tok);
+      if (!isWord) return <React.Fragment key={idx}>{tok}</React.Fragment>;
+
+      const wIdx = wordCounter++;
+      const isFlagged = flaggedSet.has(tok);
+
+      return (
+        <span
+          key={idx}
+          className={`word-token ${isFlagged ? 'flag' : ''}`}
+          onClick={e => handleWordAction(k, wIdx, tok, e, false)}
+          onDoubleClick={e => handleWordAction(k, wIdx, tok, e, true)}
+          title={isFlagged ? 'চিহ্নিত শব্দ (উচ্চারণ পরিবর্তন বা চিহ্ন মুছতে ক্লিক করুন)' : 'উচ্চারণ সংশোধন করতে ক্লিক করুন'}
+        >
+          {tok}
+        </span>
+      );
+    });
   };
 
   return (
@@ -248,14 +274,13 @@ export function ReaderView({
                 }
                 onPlayParagraph(k);
               }}
-              onDoubleClick={e => dblPara(k, e)}
               onPointerDown={e => pressStart(k, e)}
               onPointerUp={pressEnd}
               onPointerLeave={pressEnd}
               onPointerMove={pressMove}
               onContextMenu={e => press.current.done && e.preventDefault()}
             >
-              {renderFormattedParagraph(chunk)}
+              {renderFormattedParagraph(chunk, k)}
             </p>
           );
         })}
