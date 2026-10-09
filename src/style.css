@@ -1,8 +1,10 @@
 /* Tuned Book Reader - Minimalist & Mobile-First Design System */
 
 :root {
-  --font-sans: 'Hind Siliguri', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Playfair Display', 'Hind Siliguri', serif;
+  --font-sans: 'Noto Sans Bengali', 'Bangla Sangam MN', 'Kalpurush', 'SolaimanLipi', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Noto Sans Bengali', 'Bangla Sangam MN', 'Inter', sans-serif;
+  --font-serif: 'Noto Serif Bengali', 'Bangla Sangam MN', 'Kalpurush', Georgia, serif;
+  --font-bn: 'Noto Sans Bengali', 'Bangla Sangam MN', 'Kalpurush', sans-serif;
   --fs: 20px;
   --lh: 1.85;
   --radius-sm: 8px;

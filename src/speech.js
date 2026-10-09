@@ -15,7 +15,8 @@ export const STY = [
 ];
 export const DEFAULT_READER = 'bn-BD-PradeepNeural|Storyteller';
 
-export const browserVoices = () => (S ? S.getVoices().filter(v => /^bn[-_]BD/i.test(v.lang) || /bangla|bengali/i.test(v.name)) : []);
+export const browserVoices = () =>
+  S ? S.getVoices().filter(v => /^bn/i.test(v.lang) || /bangla|bengali/i.test(v.name)) : [];
 
 export function buildReaders(voices) {
   const rd = [];
@@ -24,15 +25,28 @@ export function buildReaders(voices) {
       rd.push({ neural: nv, label: '⚡ ' + nn, n, r, pt, id: nv + '|' + n });
     }
   }
-  for (const v of voices) {
+  if (voices && voices.length > 0) {
+    for (const v of voices) {
+      for (const [n, r, pt] of STY) {
+        rd.push({
+          voice: v,
+          label: '🔊 ' + v.name.replace(/^(Microsoft|Google|Apple) /, ''),
+          n,
+          r,
+          pt,
+          id: v.name + '|' + n,
+        });
+      }
+    }
+  } else {
     for (const [n, r, pt] of STY) {
       rd.push({
-        voice: v,
-        label: '🔊 ' + v.name.replace(/^(Microsoft|Google|Apple) /, ''),
+        device: true,
+        label: '🔊 ডিভাইস ভয়েস (' + n + ')',
         n,
         r,
         pt,
-        id: v.name + '|' + n,
+        id: 'device-voice|' + n,
       });
     }
   }
@@ -187,8 +201,13 @@ function silence(url) {
 
 export const spoken = t => forVoice(t);
 
+let neuralServerAvailable = null;
+
 const cache = {};
 function tts(x, text, rate, c = CTX.n) {
+  if (neuralServerAvailable === false) {
+    return Promise.reject(new Error('Neural TTS server unavailable'));
+  }
   const k = [pronMode, x.id, rate, c.r, c.p, c.v, text].join('|');
   const body = JSON.stringify({
     text: forVoice(text),
@@ -202,8 +221,13 @@ function tts(x, text, rate, c = CTX.n) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
-    }).then(r => {
-      if (!r.ok) throw new Error(r.status);
+    }).then(async r => {
+      const ct = r.headers.get('content-type') || '';
+      if (!r.ok || !ct.includes('audio')) {
+        neuralServerAvailable = false;
+        throw new Error('TTS server unavailable (' + (r.ok ? 'non-audio response' : r.status) + ')');
+      }
+      neuralServerAvailable = true;
       return r.blob();
     });
   return (cache[k] ||= get()
@@ -328,7 +352,47 @@ export function createPlayer(h) {
       }
     };
 
-    if (x?.neural) {
+    const speakBrowser = () => {
+      if (!S) return fail('ব্রাউজারে স্পিচ সমর্থিত নয়');
+      try {
+        S.cancel();
+        const textToSpeak = forVoice(sg?.t || '');
+        if (!textToSpeak.trim()) {
+          next();
+          return;
+        }
+        const u = new SpeechSynthesisUtterance(textToSpeak);
+        const voices = S.getVoices();
+        const bnVoice =
+          x?.voice ||
+          voices.find(v => /^bn/i.test(v.lang) || /bangla|bengali/i.test(v.name));
+        if (bnVoice) {
+          u.voice = bnVoice;
+          u.lang = bnVoice.lang || 'bn-BD';
+        } else {
+          u.lang = 'bn-BD';
+        }
+        u.rate = Math.max(0.5, Math.min(2.0, (x?.r || 1.0) * rate * (c?.r || 1.0)));
+        u.pitch = Math.max(0.5, Math.min(1.8, (x?.pt || 1.0) + (c?.p || 0) / 50));
+        u.volume = Math.max(0.1, Math.min(1.0, 1 + (h.volume || 0) / 100));
+        u.onend = () => {
+          if (my === run) next();
+        };
+        u.onerror = e => {
+          if (e.error !== 'canceled' && e.error !== 'interrupted') {
+            console.warn('SpeechSynthesis error:', e);
+            if (my === run) next();
+          }
+        };
+        h.msg('');
+        S.speak(u);
+      } catch (err) {
+        console.error('speakBrowser failed:', err);
+        fail('স্পিচ শুরু করা যায়নি');
+      }
+    };
+
+    if (x?.neural && neuralServerAvailable !== false) {
       h.msg('…');
       warm(x, rate, segs.slice(j));
       for (let n = 1; n <= 3; n++) {
@@ -368,32 +432,26 @@ export function createPlayer(h) {
             }, 10);
           }
           a.onended = go;
-          a.onerror = () => fail('audio error');
-          a.play().catch(e => fail('tap play again (' + e.name + ')'));
+          a.onerror = () => {
+            console.warn('Audio playback error, falling back to browser voice');
+            neuralServerAvailable = false;
+            speakBrowser();
+          };
+          a.play().catch(e => {
+            console.warn('Audio play failed, falling back to browser voice:', e);
+            speakBrowser();
+          });
         })
-        .catch(e => fail('neural voice failed: ' + e.message));
+        .catch(e => {
+          console.warn('Neural voice failed, falling back to browser voice:', e);
+          neuralServerAvailable = false;
+          speakBrowser();
+        });
       return;
     }
 
-    // Fallback to browser SpeechSynthesis
-    if (!S) return fail('speech not supported');
-    const u = new SpeechSynthesisUtterance(forVoice(sg?.t || ''));
-    if (x?.voice) {
-      u.voice = x.voice;
-      u.lang = x.voice.lang;
-      u.rate = x.r * rate * c.r;
-      u.pitch = Math.max(0, Math.min(2, x.pt + c.p / 50));
-    } else {
-      u.lang = 'bn-BD';
-      u.rate = rate * c.r;
-      u.pitch = Math.max(0, Math.min(2, 1 + c.p / 50));
-    }
-    u.volume = Math.max(0, Math.min(1, 1 + (h.volume || 0) / 100));
-    u.onend = next;
-    u.onerror = e => {
-      if (e.error !== 'canceled' && e.error !== 'interrupted') fail('speech error: ' + e.error);
-    };
-    S.speak(u);
+    // Direct browser speech
+    speakBrowser();
   }
 
   function play(k = 0) {
