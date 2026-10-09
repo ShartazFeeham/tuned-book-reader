@@ -183,14 +183,20 @@ export default function App() {
     const loadBooksData = async () => {
       let bList = [];
       try {
-        const res = await fetch('/api/books');
-        if (res.ok) bList = await res.json();
+        const sRes = await fetch('/data/books.json');
+        const sCt = sRes.headers.get('content-type') || '';
+        if (sRes.ok && sCt.includes('json')) {
+          bList = await sRes.json();
+        }
       } catch {}
 
       if (!bList || bList.length === 0) {
         try {
-          const sRes = await fetch('/data/books.json');
-          if (sRes.ok) bList = await sRes.json();
+          const res = await fetch('/api/books');
+          const ct = res.headers.get('content-type') || '';
+          if (res.ok && ct.includes('json')) {
+            bList = await res.json();
+          }
         } catch {}
       }
 
@@ -229,16 +235,19 @@ export default function App() {
           };
         }
 
-        // Load pages for volume
+        // Load pages for volume: check in-memory volumes first
         let pList = [];
-        try {
-          const pRes = await fetch(`/api/books/${matched.id}/${targetVol}`);
-          if (pRes.ok) pList = await pRes.json();
-        } catch {}
-
-        if (!pList || pList.length === 0) {
-          const curVol = matched?.volumes?.find(v => v.slug === targetVol);
-          pList = curVol?.pages || [];
+        const curVol = matched?.volumes?.find(v => v.slug === targetVol);
+        if (curVol?.pages && curVol.pages.length > 0) {
+          pList = curVol.pages;
+        } else {
+          try {
+            const pRes = await fetch(`/api/books/${matched.id}/${targetVol}`);
+            const pCt = pRes.headers.get('content-type') || '';
+            if (pRes.ok && pCt.includes('json')) {
+              pList = await pRes.json();
+            }
+          } catch {}
         }
 
         setPages(pList);
@@ -350,23 +359,23 @@ export default function App() {
     const fetchPageText = async () => {
       let bangla = null;
 
-      // Try API endpoint first
+      // 1. Try static bundled asset first (Netlify & static fast load)
       try {
-        const res = await fetch(`/api/books/${selectedBook.id}/${vol}/${currentPage}/bangla.md`);
-        if (res.ok) {
-          const txt = await res.text();
+        const sRes = await fetch(`/data/books/${selectedBook.id}/${vol}/${currentPage}.md`);
+        if (sRes.ok) {
+          const txt = await sRes.text();
           if (txt && !txt.trim().startsWith('<!doctype html') && !txt.trim().startsWith('<html')) {
             bangla = txt;
           }
         }
       } catch {}
 
-      // Fallback to static bundled asset (Netlify support)
+      // 2. Fallback to API endpoint if static was not found
       if (!bangla) {
         try {
-          const sRes = await fetch(`/data/books/${selectedBook.id}/${vol}/${currentPage}.md`);
-          if (sRes.ok) {
-            const txt = await sRes.text();
+          const res = await fetch(`/api/books/${selectedBook.id}/${vol}/${currentPage}/bangla.md`);
+          if (res.ok) {
+            const txt = await res.text();
             if (txt && !txt.trim().startsWith('<!doctype html') && !txt.trim().startsWith('<html')) {
               bangla = txt;
             }

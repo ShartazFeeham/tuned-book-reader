@@ -46,22 +46,37 @@ export function BookDetailView({
   const loadPagesForVolume = async volSlug => {
     if (!volSlug) return;
     if (volPages[volSlug] && volPages[volSlug].length > 0) return;
+
+    // Check if the book object itself already contains pages for this volume
+    const foundVol = book?.volumes?.find(v => v.slug === volSlug);
+    if (foundVol?.pages && foundVol.pages.length > 0) {
+      setVolPages(prev => ({ ...prev, [volSlug]: foundVol.pages }));
+      return;
+    }
+
     setLoadingVol(true);
     try {
+      // 1. Try static manifest
+      const mRes = await fetch('/data/books.json');
+      const mCt = mRes.headers.get('content-type') || '';
+      if (mRes.ok && mCt.includes('json')) {
+        const manifest = await mRes.json();
+        const curBook = manifest.find(b => b.id === book.id || b.slug === book.id);
+        const curVol = curBook?.volumes?.find(v => v.slug === volSlug);
+        if (curVol?.pages && curVol.pages.length > 0) {
+          setVolPages(prev => ({ ...prev, [volSlug]: curVol.pages }));
+          setLoadingVol(false);
+          return;
+        }
+      }
+
+      // 2. Try API endpoint fallback
       const res = await fetch(`/api/books/${book.id}/${volSlug}`);
-      if (res.ok) {
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('json')) {
         const pagesList = await res.json();
-        setVolPages(prev => ({ ...prev, [volSlug]: pagesList }));
-      } else {
-        // Fallback to static manifest if on static deploy
-        const mRes = await fetch('/data/books.json');
-        if (mRes.ok) {
-          const manifest = await mRes.json();
-          const curBook = manifest.find(b => b.id === book.id);
-          const curVol = curBook?.volumes?.find(v => v.slug === volSlug);
-          if (curVol?.pages) {
-            setVolPages(prev => ({ ...prev, [volSlug]: curVol.pages }));
-          }
+        if (Array.isArray(pagesList) && pagesList.length > 0) {
+          setVolPages(prev => ({ ...prev, [volSlug]: pagesList }));
         }
       }
     } catch (e) {
