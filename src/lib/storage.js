@@ -21,7 +21,7 @@ export function setStorage(key, value) {
 
 export function getPreferences() {
   return getStorage(PREFS_KEY, {
-    theme: 'sepia', // 'light' | 'dark' | 'sepia'
+    theme: 'light', // 'light' | 'dark' | 'sepia'
     fontSize: 20,
     origText: true, // default original text mode
     pronMode: 'refined', // 'refined' | 'explicit'

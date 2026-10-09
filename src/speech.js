@@ -75,7 +75,7 @@ export async function loadLexicon() {
   try {
     const [refined, handMade] = await Promise.all([
       fetch('/pronounce.json').then(r => r.json()),
-      pronMode === 'explicit' ? fetch('/pronounce-explicit.json').then(r => r.json()).catch(() => null) : null,
+      fetch('/pronounce-explicit.json').then(r => r.json()).catch(() => null),
     ]);
     forVoice = buildForVoice(refined, handMade);
   } catch {

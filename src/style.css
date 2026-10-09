@@ -21,10 +21,10 @@
 
 /* Themes */
 [data-theme='light'] {
-  --bg: #f8f9fa;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --surface-subtle: #f1f3f5;
-  --surface-glass: rgba(255, 255, 255, 0.88);
+  --surface-subtle: #f7f8fa;
+  --surface-glass: rgba(255, 255, 255, 0.94);
   --border: #e9ecef;
   --border-subtle: #dee2e6;
   --text: #212529;

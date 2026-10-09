@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Header } from './components/Header.jsx';
 import { BottomPlayer } from './components/BottomPlayer.jsx';
 import { HomePage } from './components/HomePage.jsx';
@@ -41,14 +41,13 @@ export default function App() {
   const [pages, setPages] = useState([]);
   const [pageIndex, setPageIndex] = useState(0);
 
-  // Content
+  // Content (pure text only)
   const [rawText, setRawText] = useState('');
-  const [srcText, setSrcText] = useState('');
   const [lexVersion, setLexVersion] = useState(0);
 
-  // Preferences & Theme
+  // Preferences & Theme (default: light)
   const [prefs, setPrefs] = useState(() => getPreferences());
-  const [theme, setTheme] = useState(prefs.theme || 'sepia');
+  const [theme, setTheme] = useState(prefs.theme || 'light');
   const [fontSize, setFontSize] = useState(prefs.fontSize || 20);
   const [origText, setOrigText] = useState(prefs.origText !== false);
   const [pronMode, setPronModeState] = useState(prefs.pronMode || 'refined');
@@ -63,8 +62,6 @@ export default function App() {
   const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false);
   const [amoledLock, setAmoledLock] = useState(false);
   const [respellPop, setRespellPop] = useState(null);
-  const [showSource, setShowSource] = useState(false);
-  const [showScan, setShowScan] = useState(false);
 
   // Player state
   const [voices, setVoices] = useState(browserVoices);
@@ -84,16 +81,17 @@ export default function App() {
   const cutRef = useRef(null);
   const liveRef = useRef({});
   const autoAdvanceRef = useRef(false);
+  const entryFromListingOrLinkRef = useRef(false); // only true when entering from a listing or link
   const initialWordTarget = useRef(null); // { word, place }
 
   const readers = useMemo(() => buildReaders(voices), [voices]);
   const currentReader = readers.find(r => r.id === readerId) || readers[0];
 
   const currentPage = pages[pageIndex] || null;
-  const currentChunks = useMemo(() => toChunks(rawText, origText), [rawText, origText]);
+  const refinedChunks = useMemo(() => toChunks(rawText, false), [rawText]);
 
   liveRef.current = {
-    chunks: currentChunks,
+    chunks: refinedChunks, // ALWAYS read the refined view even when original view is open
     reader: currentReader,
     rate,
     pages,
@@ -140,7 +138,9 @@ export default function App() {
         end: () => {
           const { pages, pageIndex } = liveRef.current;
           if (pageIndex + 1 >= pages.length) return false;
+          // Reading finished on page: seamlessly advance to next page WITHOUT countdown
           autoAdvanceRef.current = true;
+          entryFromListingOrLinkRef.current = false;
           setPageIndex(pageIndex + 1);
           return true;
         },
@@ -177,6 +177,8 @@ export default function App() {
 
   // Fetch Books and Flagged words on init
   useEffect(() => {
+    loadLexicon().then(() => setLexVersion(v => v + 1));
+
     fetch('/api/books')
       .then(r => (r.ok ? r.json() : []))
       .then(bList => {
@@ -189,6 +191,9 @@ export default function App() {
         }
 
         if (parsed.bookId || parsed.vol || parsed.page) {
+          // Entered via direct URL / link -> mark for 3-second countdown
+          entryFromListingOrLinkRef.current = true;
+
           const matched =
             bList.find(b => b.id === parsed.bookId || b.slug === parsed.bookId) ||
             bList[0];
@@ -248,25 +253,19 @@ export default function App() {
     cutRef.current = null;
     setHighlightedJumpPara(-1);
 
-    // Cancel pending countdown
+    // Cancel any running countdown
     if (countdownTimer.current) {
       clearInterval(countdownTimer.current);
       countdownTimer.current = null;
     }
     setCountdown(0);
 
-    Promise.all([
-      fetch(`/api/books/${selectedBook.id}/${vol}/${currentPage}/bangla.md`).then(r =>
-        r.ok ? r.text() : '(No translation available)'
-      ),
-      fetch(`/api/books/${selectedBook.id}/${vol}/${currentPage}/gvrow.txt`).then(r =>
-        r.ok ? r.text() : ''
-      ),
-    ])
-      .then(([bangla, gvrow]) => {
+    // Only load the pure text content (bangla.md)
+    fetch(`/api/books/${selectedBook.id}/${vol}/${currentPage}/bangla.md`)
+      .then(r => (r.ok ? r.text() : '(No translation available)'))
+      .then(bangla => {
         if (!isLive) return;
         setRawText(bangla);
-        setSrcText(gvrow);
 
         // Update URL
         updateUrl({
@@ -283,18 +282,30 @@ export default function App() {
           volumeLabel: vol.replace('-', ' ').toUpperCase(),
           onPlay: () => player.play(Math.max(nowParagraph, 0)),
           onPause: () => player.stop(),
-          onNext: () => pageIndex < pages.length - 1 && setPageIndex(pageIndex + 1),
-          onPrev: () => pageIndex > 0 && setPageIndex(pageIndex - 1),
+          onNext: () => {
+            if (pageIndex < pages.length - 1) {
+              entryFromListingOrLinkRef.current = false;
+              player.stop();
+              setPageIndex(pageIndex + 1);
+            }
+          },
+          onPrev: () => {
+            if (pageIndex > 0) {
+              entryFromListingOrLinkRef.current = false;
+              player.stop();
+              setPageIndex(pageIndex - 1);
+            }
+          },
         });
 
         // Check if there was an initial word target from URL
+        let targetPara = -1;
         if (initialWordTarget.current) {
           const { word, place } = initialWordTarget.current;
           initialWordTarget.current = null;
 
           const pageChunks = toChunks(bangla, origText);
           let matchCount = 0;
-          let targetPara = -1;
 
           for (let pIdx = 0; pIdx < pageChunks.length; pIdx++) {
             const wordsInPara = pageChunks[pIdx].split(/\s+/);
@@ -313,19 +324,17 @@ export default function App() {
 
           if (targetPara >= 0) {
             setHighlightedJumpPara(targetPara);
-            setTimeout(() => {
-              player.play(targetPara);
-            }, 300);
-            return;
           }
         }
 
-        // Auto advance continuation
+        // Auto-advance continuation from previous page ending:
         if (autoAdvanceRef.current) {
           autoAdvanceRef.current = false;
+          entryFromListingOrLinkRef.current = false;
           player.play(0);
-        } else if (autoPlayCountdown) {
-          // 3-second countdown before auto-playing
+        } else if (entryFromListingOrLinkRef.current && autoPlayCountdown) {
+          // ONLY trigger 3-second countdown when entering from a listing or link!
+          entryFromListingOrLinkRef.current = false;
           let count = 3;
           setCountdown(count);
           countdownTimer.current = setInterval(() => {
@@ -334,11 +343,14 @@ export default function App() {
               clearInterval(countdownTimer.current);
               countdownTimer.current = null;
               setCountdown(0);
-              player.play(0);
+              player.play(targetPara >= 0 ? targetPara : 0);
             } else {
               setCountdown(count);
             }
           }, 1000);
+        } else {
+          // Normal navigation (prev/next or jump): reset flag, do NOT countdown
+          entryFromListingOrLinkRef.current = false;
         }
       })
       .catch(e => {
@@ -359,11 +371,13 @@ export default function App() {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
       if (e.key === 'ArrowLeft') {
         if (pageIndex > 0) {
+          entryFromListingOrLinkRef.current = false;
           player.stop();
           setPageIndex(pageIndex - 1);
         }
       } else if (e.key === 'ArrowRight') {
         if (pageIndex < pages.length - 1) {
+          entryFromListingOrLinkRef.current = false;
           player.stop();
           setPageIndex(pageIndex + 1);
         }
@@ -526,6 +540,7 @@ export default function App() {
       setView('book-detail');
       updateUrl({ view: 'book-detail', bookId: book.id });
     } else {
+      entryFromListingOrLinkRef.current = true;
       setVol('volume-01');
       setView('reader');
       updateUrl({ view: 'reader', bookId: book.id, vol: 'volume-01', page: '0001' });
@@ -533,6 +548,9 @@ export default function App() {
   };
 
   const handleResumeReading = entry => {
+    // Entering from Continue Reading listing -> triggers 3s countdown
+    entryFromListingOrLinkRef.current = true;
+
     const matched = books.find(b => b.id === entry.bookId || b.slug === entry.bookId) || books[0];
     setSelectedBook(matched);
     setVol(entry.volume || 'volume-01');
@@ -552,6 +570,9 @@ export default function App() {
   };
 
   const handleSelectPageFromDetail = (bookId, volSlug, pageNum) => {
+    // Entering from 20-page batch listing -> triggers 3s countdown
+    entryFromListingOrLinkRef.current = true;
+
     player.stop();
     setVol(volSlug);
     fetch(`/api/books/${bookId}/${volSlug}`)
@@ -577,6 +598,9 @@ export default function App() {
   };
 
   const handleJumpToDevLocation = item => {
+    // Entering from Dev Mode list -> triggers 3s countdown
+    entryFromListingOrLinkRef.current = true;
+
     const matched = books.find(b => b.id === item.bookId || b.slug === item.bookId) || books[0];
     setSelectedBook(matched);
     setVol(item.volume);
@@ -648,15 +672,12 @@ export default function App() {
             vol={vol}
             page={currentPage}
             rawText={rawText}
-            sourceText={srcText}
             origText={origText}
             lexVersion={lexVersion}
             playing={playing}
             nowParagraph={nowParagraph}
             highlightedJumpPara={highlightedJumpPara}
             flaggedSet={flaggedSet}
-            showSource={showSource}
-            showScan={showScan}
             onPlayParagraph={k => {
               cutRef.current = null;
               player.stop();
@@ -677,12 +698,14 @@ export default function App() {
           onTogglePlay={handleTogglePlay}
           onPrevPage={() => {
             if (pageIndex > 0) {
+              entryFromListingOrLinkRef.current = false;
               player.stop();
               setPageIndex(pageIndex - 1);
             }
           }}
           onNextPage={() => {
             if (pageIndex < pages.length - 1) {
+              entryFromListingOrLinkRef.current = false;
               player.stop();
               setPageIndex(pageIndex + 1);
             }
@@ -690,6 +713,7 @@ export default function App() {
           pageIndex={pageIndex}
           totalPages={pages.length}
           onJumpToPage={targetIdx => {
+            entryFromListingOrLinkRef.current = false;
             player.stop();
             setPageIndex(targetIdx);
           }}
@@ -717,6 +741,8 @@ export default function App() {
           setVol(newVol);
         }}
         onSelectPage={newPage => {
+          // Entering from Drawer listing -> triggers 3s countdown
+          entryFromListingOrLinkRef.current = true;
           player.stop();
           const idx = pages.indexOf(newPage);
           if (idx >= 0) setPageIndex(idx);
@@ -765,10 +791,6 @@ export default function App() {
           setBackgroundPlay(next);
           savePreferences({ backgroundPlay: next });
         }}
-        showSource={showSource}
-        onToggleShowSource={() => setShowSource(s => !s)}
-        showScan={showScan}
-        onToggleShowScan={() => setShowScan(s => !s)}
         pronMode={pronMode}
         onChangePronMode={setPronModeState}
       />

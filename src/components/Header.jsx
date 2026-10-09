@@ -14,11 +14,11 @@ export function Header({
   onOpenVoiceSettings,
   onGoHome,
 }) {
-  // Cycle theme: sepia -> dark -> light -> sepia
+  // Cycle theme: light -> dark -> sepia -> light
   const cycleTheme = () => {
-    if (theme === 'sepia') onThemeChange('dark');
-    else if (theme === 'dark') onThemeChange('light');
-    else onThemeChange('sepia');
+    if (theme === 'light') onThemeChange('dark');
+    else if (theme === 'dark') onThemeChange('sepia');
+    else onThemeChange('light');
   };
 
   const getThemeIcon = () => {

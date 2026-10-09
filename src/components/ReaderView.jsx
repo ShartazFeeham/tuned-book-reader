@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { spoken } from '../speech.js';
 import { nextSuggestion } from '../respell.mjs';
 
-// Chunk converter: drops footnotes, markdown markers, brackets, spells out Arabic honorifics
+// Chunk converter: splits markdown paragraphs
 const dropBrackets = t => {
   for (let u; u !== t; ) {
     u = t;
@@ -14,6 +14,7 @@ const dropBrackets = t => {
 export function toChunks(raw, orig) {
   if (!raw) return [];
   let t = raw;
+
   if (!orig) {
     const notes = new Set(
       [...(raw.split(/\n\s*\*\*টীকা\*\*/)[1]?.matchAll(/^\s*([০-৯0-9]+)[.।]/gm) ?? [])].map(m => m[1])
@@ -51,6 +52,8 @@ export function toChunks(raw, orig) {
       .replace(/["“”„]/g, '')
       .replace(/।"/g, '"।')
       .replace(/।(["”’')]*)[ \t]+(?=\S)/g, '$1\n\n');
+  } else {
+    t = t.replace(/।"/g, '"।').replace(/।(["”’')]*)[ \t]+(?=\S)/g, '$1\n\n');
   }
 
   const chunks = t
@@ -66,15 +69,12 @@ export function ReaderView({
   vol,
   page,
   rawText,
-  sourceText,
   origText,
   lexVersion,
   playing,
   nowParagraph,
   highlightedJumpPara,
   flaggedSet,
-  showSource,
-  showScan,
   onPlayParagraph,
   onWordLongPress,
   onFlagWord,
@@ -260,46 +260,6 @@ export function ReaderView({
           );
         })}
       </div>
-
-      {showSource && sourceText && (
-        <div
-          style={{
-            marginTop: 32,
-            padding: 16,
-            background: 'var(--surface-subtle)',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border)',
-            fontFamily: 'monospace',
-            fontSize: '0.85rem',
-            whiteSpace: 'pre-wrap',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <div style={{ fontWeight: 'bold', marginBottom: 8, color: 'var(--text)' }}>Source Markdown:</div>
-          {sourceText}
-        </div>
-      )}
-
-      {showScan && page && (
-        <div style={{ marginTop: 32, textAlign: 'center' }}>
-          <div style={{ fontWeight: 'bold', marginBottom: 8, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            Original Page Scan Photo:
-          </div>
-          <img
-            src={`/api/books/${bookId}/${vol}/${page}/photo.jpg`}
-            alt={`Page ${page} Scan`}
-            style={{
-              maxWidth: '100%',
-              borderRadius: 'var(--radius-md)',
-              boxShadow: 'var(--shadow-md)',
-              border: '1px solid var(--border)',
-            }}
-            onError={e => {
-              e.target.style.display = 'none';
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 }

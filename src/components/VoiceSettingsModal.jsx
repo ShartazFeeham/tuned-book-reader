@@ -17,10 +17,6 @@ export function VoiceSettingsModal({
   onToggleAutoPlayCountdown,
   backgroundPlay,
   onToggleBackgroundPlay,
-  showSource,
-  onToggleShowSource,
-  showScan,
-  onToggleShowScan,
   pronMode,
   onChangePronMode,
 }) {
@@ -149,7 +145,7 @@ export function VoiceSettingsModal({
             <div>
               <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>3-Second Page Entry Countdown</div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                Counts down before auto-reading when navigating pages
+                Counts down before auto-reading when entering from listing/link
               </div>
             </div>
             <label className="toggle-switch" onClick={e => e.stopPropagation()}>
@@ -174,40 +170,6 @@ export function VoiceSettingsModal({
                 type="checkbox"
                 checked={backgroundPlay}
                 onChange={onToggleBackgroundPlay}
-              />
-              <span className="slider"></span>
-            </label>
-          </div>
-
-          <div className="toggle-row" onClick={onToggleShowSource}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Show Original Source Markdown</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                Displays raw translation lines
-              </div>
-            </div>
-            <label className="toggle-switch" onClick={e => e.stopPropagation()}>
-              <input
-                type="checkbox"
-                checked={showSource}
-                onChange={onToggleShowSource}
-              />
-              <span className="slider"></span>
-            </label>
-          </div>
-
-          <div className="toggle-row" onClick={onToggleShowScan}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Show Original Book Page Scan</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                Displays high-resolution scanned photo
-              </div>
-            </div>
-            <label className="toggle-switch" onClick={e => e.stopPropagation()}>
-              <input
-                type="checkbox"
-                checked={showScan}
-                onChange={onToggleShowScan}
               />
               <span className="slider"></span>
             </label>
