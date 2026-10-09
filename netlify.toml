@@ -1,6 +1,7 @@
 [build]
   publish = "dist"
   command = "npm run build"
+  functions = "netlify/functions"
 
 [build.environment]
   NETLIFY_DISABLE_DRAWER = "true"
@@ -10,6 +11,11 @@
   [headers.values]
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
+
+[[redirects]]
+  from = "/tts"
+  to = "/.netlify/functions/tts"
+  status = 200
 
 [[redirects]]
   from = "/*"

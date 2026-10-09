@@ -182,36 +182,19 @@ export function ReaderView({
   };
 
   const handleWordAction = (k, wIdx, tok, e, isDbl = false) => {
-    e.stopPropagation();
-    pressEnd();
-    if (press.current.done) {
-      press.current.done = false;
+    if (!isDbl) {
+      // Single click does NOT offer correction; lets click bubble to paragraph
       return;
     }
+    e.stopPropagation();
+    pressEnd();
 
     const bn = tok.normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0];
     if (!bn) return;
 
-    if (isDbl) {
-      navigator.clipboard?.writeText(tok).catch(() => {});
-    }
-
     const { toks, i } = rawIndex(k, wIdx);
     const rawWord = (toks[i] || tok).normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0] || tok;
     const isFlagged = flaggedSet.has(bn) || flaggedSet.has(rawWord);
-
-    if (isDbl) {
-      // Toggle flag on double click
-      onFlagWord({
-        word: bn,
-        raw: rawWord,
-        book: bookId,
-        volume: vol,
-        page,
-        paragraph: k,
-        wordIndex: wIdx,
-      });
-    }
 
     const start = origText ? rawWord : spoken(rawWord).match(/[\u0980-\u09FF]+/)?.[0] || rawWord;
     const q = nextSuggestion(start);
@@ -248,7 +231,7 @@ export function ReaderView({
           className={`word-token ${isFlagged ? 'flag' : ''}`}
           onClick={e => handleWordAction(k, wIdx, tok, e, false)}
           onDoubleClick={e => handleWordAction(k, wIdx, tok, e, true)}
-          title={isFlagged ? 'চিহ্নিত শব্দ (উচ্চারণ পরিবর্তন বা চিহ্ন মুছতে ক্লিক করুন)' : 'উচ্চারণ সংশোধন করতে ক্লিক করুন'}
+          title={isFlagged ? 'চিহ্নিত শব্দ (উচ্চারণ সংশোধন করতে ডাবল ক্লিক করুন)' : 'উচ্চারণ সংশোধন করতে ডাবল ক্লিক করুন'}
         >
           {tok}
         </span>

@@ -108,6 +108,7 @@ export function addPronunciationOverride(word, to) {
 }
 
 export async function loadLexicon() {
+  if (cachedRefined && cachedHandMade) return;
   try {
     const [refined, handMade] = await Promise.all([
       fetch('/pronounce.json').then(r => (r.ok ? r.json() : {})).catch(() => ({})),
