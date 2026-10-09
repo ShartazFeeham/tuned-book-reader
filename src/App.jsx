@@ -23,6 +23,7 @@ import {
 import {
   getPreferences,
   savePreferences,
+  resetPreferences,
   getReadingHistory,
   saveLastRead,
 } from './lib/storage.js';
@@ -826,6 +827,30 @@ export default function App() {
     }, false);
   };
 
+  const handleResetPreferences = () => {
+    const defaults = resetPreferences();
+    setRate(defaults.rate);
+    setPitch(defaults.pitch);
+    setFontSize(defaults.fontSize);
+    setPronModeState(defaults.pronMode);
+    setAutoPlayCountdown(defaults.autoPlayCountdown);
+    setBackgroundPlay(defaults.backgroundPlay);
+    setReaderId(defaults.readerId);
+
+    liveRef.current.rate = defaults.rate;
+    const defReader = readers.find(r => r.id === defaults.readerId) || readers[0];
+    if (defReader) {
+      liveRef.current.reader = defReader;
+    }
+
+    document.documentElement.style.setProperty('--fs', `${defaults.fontSize}px`);
+
+    if (playing) {
+      player.stop();
+      player.play(Math.max(nowParagraph, 0));
+    }
+  };
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -1002,6 +1027,7 @@ export default function App() {
         }}
         pronMode={pronMode}
         onChangePronMode={setPronModeState}
+        onResetDefaults={handleResetPreferences}
       />
 
       {/* AMOLED Focus Lock Overlay */}

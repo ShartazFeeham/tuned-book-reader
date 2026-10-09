@@ -19,24 +19,31 @@ export function setStorage(key, value) {
   } catch {}
 }
 
+export const DEFAULT_PREFERENCES = {
+  theme: 'light', // 'light' | 'dark' | 'sepia'
+  fontSize: 20,
+  origText: true, // default original text mode
+  pronMode: 'refined', // 'refined' | 'explicit'
+  rate: 1.0,
+  pitch: 0,
+  volume: 0,
+  readerId: 'bn-BD-PradeepNeural|Storyteller',
+  autoPlayCountdown: true,
+  backgroundPlay: true,
+};
+
 export function getPreferences() {
-  return getStorage(PREFS_KEY, {
-    theme: 'light', // 'light' | 'dark' | 'sepia'
-    fontSize: 20,
-    origText: true, // default original text mode
-    pronMode: 'refined', // 'refined' | 'explicit'
-    rate: 1.0,
-    pitch: 0,
-    volume: 0,
-    readerId: 'bn-BD-PradeepNeural|Storyteller',
-    autoPlayCountdown: true,
-    backgroundPlay: true,
-  });
+  return getStorage(PREFS_KEY, DEFAULT_PREFERENCES);
 }
 
 export function savePreferences(prefs) {
   const current = getPreferences();
   setStorage(PREFS_KEY, { ...current, ...prefs });
+}
+
+export function resetPreferences() {
+  setStorage(PREFS_KEY, { ...DEFAULT_PREFERENCES });
+  return { ...DEFAULT_PREFERENCES };
 }
 
 // Convert numbers to Bengali digits

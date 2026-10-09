@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, Volume2, Type, Sparkles, Clock, Eye, Zap } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Volume2, Type, Sparkles, Clock, Eye, Zap, RotateCcw, Check } from 'lucide-react';
 
 export function VoiceSettingsModal({
   isOpen,
@@ -19,8 +19,17 @@ export function VoiceSettingsModal({
   onToggleBackgroundPlay,
   pronMode,
   onChangePronMode,
+  onResetDefaults,
 }) {
+  const [justReset, setJustReset] = useState(false);
+
   if (!isOpen) return null;
+
+  const handleReset = () => {
+    if (onResetDefaults) onResetDefaults();
+    setJustReset(true);
+    setTimeout(() => setJustReset(false), 1500);
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -30,9 +39,19 @@ export function VoiceSettingsModal({
             <Sparkles size={18} color="var(--accent)" />
             Voice & Reader Settings
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Close settings">
-            <X size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              className={`icon-btn ${justReset ? 'active' : ''}`}
+              onClick={handleReset}
+              title="Reset all settings to default"
+              aria-label="Reset to default"
+            >
+              <RotateCcw size={17} />
+            </button>
+            <button className="icon-btn" onClick={onClose} aria-label="Close settings">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="modal-body">
@@ -174,6 +193,25 @@ export function VoiceSettingsModal({
               <span className="slider"></span>
             </label>
           </div>
+        </div>
+
+        <div className="modal-footer">
+          <button
+            type="button"
+            className={`reset-defaults-btn ${justReset ? 'just-reset' : ''}`}
+            onClick={handleReset}
+            title="Reset voice, speed, pitch, text size, and toggles to default"
+          >
+            {justReset ? <Check size={15} /> : <RotateCcw size={15} />}
+            <span>{justReset ? 'Reset to Default' : 'Reset to Default'}</span>
+          </button>
+          <button
+            type="button"
+            className="modal-done-btn"
+            onClick={onClose}
+          >
+            Done
+          </button>
         </div>
       </div>
     </div>
