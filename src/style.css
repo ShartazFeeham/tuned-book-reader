@@ -1219,3 +1219,23 @@ input:checked + .slider:before {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* Strictly hide and disable Netlify drawer, banner, badge, and feedback widgets */
+[data-netlify-drawer],
+#netlify-drawer,
+.netlify-badge,
+#netlify-banner,
+div[class*="netlify-feedback"],
+div[id*="netlify-feedback"],
+div[class*="feedback-badge"],
+iframe[src*="netlify"],
+.netlify-feedback-banner {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  z-index: -9999 !important;
+}
+

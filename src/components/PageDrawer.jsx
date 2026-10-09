@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Home, ChevronRight, Book, Check } from 'lucide-react';
+import { toBnNum } from '../lib/storage.js';
 
 export function PageDrawer({
   isOpen,
@@ -30,10 +31,12 @@ export function PageDrawer({
     const endNum = parseInt(batchPages[batchPages.length - 1], 10);
     batches.push({
       batchIndex: Math.floor(i / batchSize),
-      label: `Pages ${startNum} – ${endNum}`,
+      label: `পৃষ্ঠা ${toBnNum(startNum)} – ${toBnNum(endNum)}`,
       pages: batchPages,
     });
   }
+
+  const curVolNum = currentVol ? currentVol.replace(/^volume-0?/, '') : '১';
 
   return (
     <>
@@ -42,10 +45,10 @@ export function PageDrawer({
         <div className="drawer-header">
           <div>
             <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
-              {book?.title || 'Book Navigation'}
+              {book?.title || 'কিতাব নেভিগেশন'}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              {currentVol ? currentVol.replace('-', ' ').toUpperCase() : ''}
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              খণ্ড {toBnNum(curVolNum)}
             </div>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close drawer">
@@ -64,7 +67,7 @@ export function PageDrawer({
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Home size={16} /> Back to Library
+              <Home size={16} /> লাইব্রেরিতে ফিরুন
             </span>
             <ChevronRight size={16} />
           </div>
@@ -82,7 +85,7 @@ export function PageDrawer({
                   marginBottom: 6,
                 }}
               >
-                Volumes
+                খণ্ডসমূহ
               </label>
               <select
                 className="setting-select"
@@ -90,11 +93,14 @@ export function PageDrawer({
                 onChange={e => onSelectVolume(e.target.value)}
                 style={{ padding: '8px 10px', fontSize: '0.85rem' }}
               >
-                {volumes.map(v => (
-                  <option key={v.slug} value={v.slug}>
-                    {v.label || v.slug}
-                  </option>
-                ))}
+                {volumes.map(v => {
+                  const num = parseInt(v.slug.replace('volume-', ''), 10);
+                  return (
+                    <option key={v.slug} value={v.slug}>
+                      খণ্ড {toBnNum(num)}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           )}
@@ -110,7 +116,7 @@ export function PageDrawer({
               marginBottom: 6,
             }}
           >
-            Pages in Volume ({pages.length})
+            এই খণ্ডের পৃষ্ঠাসমূহ ({toBnNum(pages.length)}টি)
           </label>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -143,7 +149,7 @@ export function PageDrawer({
                               onClose();
                             }}
                           >
-                            <span>{parseInt(p, 10)}</span>
+                            <span>{toBnNum(parseInt(p, 10))}</span>
                           </div>
                         );
                       })}

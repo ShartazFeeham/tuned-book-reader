@@ -175,55 +175,83 @@ export default function App() {
     return () => window.speechSynthesis.removeEventListener('voiceschanged', update);
   }, []);
 
-  // Fetch Books and Flagged words on init
+  // Fetch Books and Flagged words on init (with static fallback)
   useEffect(() => {
     loadLexicon().then(() => setLexVersion(v => v + 1));
 
-    fetch('/api/books')
-      .then(r => (r.ok ? r.json() : []))
-      .then(bList => {
-        setBooks(bList);
-        // Process initial URL
-        const parsed = parseCurrentUrl();
-        if (parsed.view === 'dev') {
-          setView('dev');
-          return;
+    const loadBooksData = async () => {
+      let bList = [];
+      try {
+        const res = await fetch('/api/books');
+        if (res.ok) bList = await res.json();
+      } catch {}
+
+      if (!bList || bList.length === 0) {
+        try {
+          const sRes = await fetch('/data/books.json');
+          if (sRes.ok) bList = await sRes.json();
+        } catch {}
+      }
+
+      setBooks(bList);
+
+      // Process initial URL
+      const parsed = parseCurrentUrl();
+      if (parsed.view === 'dev') {
+        setView('dev');
+        return;
+      }
+
+      if (parsed.view === 'book-detail') {
+        const matched =
+          bList.find(b => b.id === parsed.bookId || b.slug === parsed.bookId) ||
+          bList[0];
+        setSelectedBook(matched);
+        setView('book-detail');
+        return;
+      }
+
+      if (parsed.view === 'reader') {
+        entryFromListingOrLinkRef.current = true;
+        const matched =
+          bList.find(b => b.id === parsed.bookId || b.slug === parsed.bookId) ||
+          bList[0];
+        setSelectedBook(matched);
+
+        const targetVol = parsed.vol || matched?.volumes?.[0]?.slug || 'volume-01';
+        setVol(targetVol);
+
+        if (parsed.word) {
+          initialWordTarget.current = {
+            word: parsed.word,
+            place: parsed.place || 1,
+          };
         }
 
-        if (parsed.bookId || parsed.vol || parsed.page) {
-          // Entered via direct URL / link -> mark for 3-second countdown
-          entryFromListingOrLinkRef.current = true;
+        // Load pages for volume
+        let pList = [];
+        try {
+          const pRes = await fetch(`/api/books/${matched.id}/${targetVol}`);
+          if (pRes.ok) pList = await pRes.json();
+        } catch {}
 
-          const matched =
-            bList.find(b => b.id === parsed.bookId || b.slug === parsed.bookId) ||
-            bList[0];
-          setSelectedBook(matched);
-
-          const targetVol = parsed.vol || matched?.volumes?.[0]?.slug || 'volume-01';
-          setVol(targetVol);
-
-          if (parsed.word) {
-            initialWordTarget.current = {
-              word: parsed.word,
-              place: parsed.place || 1,
-            };
-          }
-
-          fetch(`/api/books/${matched.id}/${targetVol}`)
-            .then(r => r.json())
-            .then(pList => {
-              setPages(pList);
-              if (parsed.page) {
-                const targetIdx = pList.indexOf(normalizePage(parsed.page));
-                setPageIndex(targetIdx >= 0 ? targetIdx : 0);
-              } else {
-                setPageIndex(0);
-              }
-              setView('reader');
-            });
+        if (!pList || pList.length === 0) {
+          const curVol = matched?.volumes?.find(v => v.slug === targetVol);
+          pList = curVol?.pages || [];
         }
-      })
-      .catch(e => console.error('Failed to load books:', e));
+
+        setPages(pList);
+        if (parsed.page) {
+          const targetIdx = pList.indexOf(normalizePage(parsed.page));
+          setPageIndex(targetIdx >= 0 ? targetIdx : 0);
+        } else {
+          setPageIndex(0);
+        }
+        setView('reader');
+      }
+    };
+
+    loadBooksData();
 
     fetch('/flagged.json')
       .then(r => (r.ok ? r.json() : []))
@@ -233,21 +261,68 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // When volume changes, load pages list
+  // Listen for browser Back/Forward (popstate)
+  useEffect(() => {
+    const handlePopState = () => {
+      player.stop();
+      const parsed = parseCurrentUrl();
+
+      if (parsed.view === 'home') {
+        setView('home');
+      } else if (parsed.view === 'dev') {
+        setView('dev');
+      } else if (parsed.view === 'book-detail') {
+        if (parsed.bookId && books.length > 0) {
+          const matched = books.find(b => b.id === parsed.bookId || b.slug === parsed.bookId) || books[0];
+          setSelectedBook(matched);
+        }
+        setView('book-detail');
+      } else if (parsed.view === 'reader') {
+        if (parsed.bookId && books.length > 0) {
+          const matched = books.find(b => b.id === parsed.bookId || b.slug === parsed.bookId) || books[0];
+          setSelectedBook(matched);
+        }
+        if (parsed.vol) setVol(parsed.vol);
+        if (parsed.page && pages.length > 0) {
+          const idx = pages.indexOf(normalizePage(parsed.page));
+          if (idx >= 0) setPageIndex(idx);
+        }
+        setView('reader');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [books, pages, player]);
+
+  // When volume changes, load pages list (with static fallback)
   useEffect(() => {
     if (!selectedBook || !vol) return;
-    fetch(`/api/books/${selectedBook.id}/${vol}`)
-      .then(r => (r.ok ? r.json() : []))
-      .then(pList => {
-        setPages(pList);
-      })
-      .catch(e => console.error('Failed to load volume pages:', e));
+
+    const loadVolumePages = async () => {
+      let pList = [];
+      try {
+        const res = await fetch(`/api/books/${selectedBook.id}/${vol}`);
+        if (res.ok) pList = await res.json();
+      } catch {}
+
+      if (!pList || pList.length === 0) {
+        const curVol = selectedBook?.volumes?.find(v => v.slug === vol);
+        pList = curVol?.pages || [];
+      }
+      setPages(pList);
+    };
+
+    loadVolumePages();
   }, [selectedBook, vol]);
 
   // Load Page Text when book, vol, or page changes
   useEffect(() => {
     if (!selectedBook || !vol || !currentPage) return;
     let isLive = true;
+
+    // Scroll smoothly to top on page load
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
     // Reset cut and jump highlights
     cutRef.current = null;
@@ -260,102 +335,118 @@ export default function App() {
     }
     setCountdown(0);
 
-    // Only load the pure text content (bangla.md)
-    fetch(`/api/books/${selectedBook.id}/${vol}/${currentPage}/bangla.md`)
-      .then(r => (r.ok ? r.text() : '(No translation available)'))
-      .then(bangla => {
-        if (!isLive) return;
-        setRawText(bangla);
+    const fetchPageText = async () => {
+      let bangla = null;
 
-        // Update URL
-        updateUrl({
+      // Try API endpoint first
+      try {
+        const res = await fetch(`/api/books/${selectedBook.id}/${vol}/${currentPage}/bangla.md`);
+        if (res.ok) bangla = await res.text();
+      } catch {}
+
+      // Fallback to static bundled asset (Netlify support)
+      if (!bangla) {
+        try {
+          const sRes = await fetch(`/data/books/${selectedBook.id}/${vol}/${currentPage}.md`);
+          if (sRes.ok) bangla = await sRes.text();
+        } catch {}
+      }
+
+      if (!isLive) return;
+      const textToUse = bangla || '(পৃষ্ঠার অনুবাদ লোড করা যায়নি)';
+      setRawText(textToUse);
+
+      // Update URL
+      updateUrl(
+        {
           view: 'reader',
           bookId: selectedBook.id,
           vol,
           page: currentPage,
-        });
+        },
+        true
+      );
 
-        // Update MediaSession
-        updateMediaSession({
-          title: `Page ${parseInt(currentPage, 10)} - ${selectedBook.title}`,
-          bookTitle: selectedBook.title,
-          volumeLabel: vol.replace('-', ' ').toUpperCase(),
-          onPlay: () => player.play(Math.max(nowParagraph, 0)),
-          onPause: () => player.stop(),
-          onNext: () => {
-            if (pageIndex < pages.length - 1) {
-              entryFromListingOrLinkRef.current = false;
-              player.stop();
-              setPageIndex(pageIndex + 1);
-            }
-          },
-          onPrev: () => {
-            if (pageIndex > 0) {
-              entryFromListingOrLinkRef.current = false;
-              player.stop();
-              setPageIndex(pageIndex - 1);
-            }
-          },
-        });
+      // Update MediaSession
+      updateMediaSession({
+        title: `পৃষ্ঠা ${parseInt(currentPage, 10)} - ${selectedBook.title}`,
+        bookTitle: selectedBook.title,
+        volumeLabel: vol.replace('-', ' ').toUpperCase(),
+        onPlay: () => player.play(Math.max(nowParagraph, 0)),
+        onPause: () => player.stop(),
+        onNext: () => {
+          if (pageIndex < pages.length - 1) {
+            entryFromListingOrLinkRef.current = false;
+            player.stop();
+            setPageIndex(pageIndex + 1);
+          }
+        },
+        onPrev: () => {
+          if (pageIndex > 0) {
+            entryFromListingOrLinkRef.current = false;
+            player.stop();
+            setPageIndex(pageIndex - 1);
+          }
+        },
+      });
 
-        // Check if there was an initial word target from URL
-        let targetPara = -1;
-        if (initialWordTarget.current) {
-          const { word, place } = initialWordTarget.current;
-          initialWordTarget.current = null;
+      // Check if there was an initial word target from URL
+      let targetPara = -1;
+      if (initialWordTarget.current) {
+        const { word, place } = initialWordTarget.current;
+        initialWordTarget.current = null;
 
-          const pageChunks = toChunks(bangla, origText);
-          let matchCount = 0;
+        const pageChunks = toChunks(textToUse, origText);
+        let matchCount = 0;
 
-          for (let pIdx = 0; pIdx < pageChunks.length; pIdx++) {
-            const wordsInPara = pageChunks[pIdx].split(/\s+/);
-            for (const w of wordsInPara) {
-              const cleanW = w.normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0];
-              if (cleanW === word.normalize('NFC')) {
-                matchCount++;
-                if (matchCount === place) {
-                  targetPara = pIdx;
-                  break;
-                }
+        for (let pIdx = 0; pIdx < pageChunks.length; pIdx++) {
+          const wordsInPara = pageChunks[pIdx].split(/\s+/);
+          for (const w of wordsInPara) {
+            const cleanW = w.normalize('NFC').match(/[\u0980-\u09FF]+/)?.[0];
+            if (cleanW === word.normalize('NFC')) {
+              matchCount++;
+              if (matchCount === place) {
+                targetPara = pIdx;
+                break;
               }
             }
-            if (targetPara >= 0) break;
           }
-
-          if (targetPara >= 0) {
-            setHighlightedJumpPara(targetPara);
-          }
+          if (targetPara >= 0) break;
         }
 
-        // Auto-advance continuation from previous page ending:
-        if (autoAdvanceRef.current) {
-          autoAdvanceRef.current = false;
-          entryFromListingOrLinkRef.current = false;
-          player.play(0);
-        } else if (entryFromListingOrLinkRef.current && autoPlayCountdown) {
-          // ONLY trigger 3-second countdown when entering from a listing or link!
-          entryFromListingOrLinkRef.current = false;
-          let count = 3;
-          setCountdown(count);
-          countdownTimer.current = setInterval(() => {
-            count--;
-            if (count <= 0) {
-              clearInterval(countdownTimer.current);
-              countdownTimer.current = null;
-              setCountdown(0);
-              player.play(targetPara >= 0 ? targetPara : 0);
-            } else {
-              setCountdown(count);
-            }
-          }, 1000);
-        } else {
-          // Normal navigation (prev/next or jump): reset flag, do NOT countdown
-          entryFromListingOrLinkRef.current = false;
+        if (targetPara >= 0) {
+          setHighlightedJumpPara(targetPara);
         }
-      })
-      .catch(e => {
-        if (isLive) setRawText('(Failed to load page content)');
-      });
+      }
+
+      // Auto-advance continuation from previous page ending:
+      if (autoAdvanceRef.current) {
+        autoAdvanceRef.current = false;
+        entryFromListingOrLinkRef.current = false;
+        player.play(0);
+      } else if (entryFromListingOrLinkRef.current && autoPlayCountdown) {
+        // ONLY trigger 3-second countdown when entering from a listing or link!
+        entryFromListingOrLinkRef.current = false;
+        let count = 3;
+        setCountdown(count);
+        countdownTimer.current = setInterval(() => {
+          count--;
+          if (count <= 0) {
+            clearInterval(countdownTimer.current);
+            countdownTimer.current = null;
+            setCountdown(0);
+            player.play(targetPara >= 0 ? targetPara : 0);
+          } else {
+            setCountdown(count);
+          }
+        }, 1000);
+      } else {
+        // Normal navigation: reset flag, do NOT countdown
+        entryFromListingOrLinkRef.current = false;
+      }
+    };
+
+    fetchPageText();
 
     return () => {
       isLive = false;
@@ -437,14 +528,17 @@ export default function App() {
       }
 
       // Update URL with word and place
-      updateUrl({
-        view: 'reader',
-        bookId: selectedBook?.id,
-        vol,
-        page: currentPage,
-        word,
-        place: occurrence,
-      });
+      updateUrl(
+        {
+          view: 'reader',
+          bookId: selectedBook?.id,
+          vol,
+          page: currentPage,
+          word,
+          place: occurrence,
+        },
+        true
+      );
     }
 
     player.stop();
@@ -457,7 +551,6 @@ export default function App() {
     const isFlagged = flaggedSet.has(word);
 
     if (isFlagged) {
-      // Unflag
       setFlaggedSet(prev => {
         const next = new Set(prev);
         next.delete(word);
@@ -469,7 +562,6 @@ export default function App() {
         body: JSON.stringify({ word }),
       }).catch(() => {});
     } else {
-      // Flag
       setFlaggedSet(prev => new Set(prev).add(word));
       fetch('/flag', {
         method: 'POST',
@@ -536,85 +628,99 @@ export default function App() {
   const handleSelectBook = book => {
     setSelectedBook(book);
     player.stop();
-    if (book.volumes && book.volumes.length > 0) {
-      setView('book-detail');
-      updateUrl({ view: 'book-detail', bookId: book.id });
-    } else {
-      entryFromListingOrLinkRef.current = true;
-      setVol('volume-01');
-      setView('reader');
-      updateUrl({ view: 'reader', bookId: book.id, vol: 'volume-01', page: '0001' });
-    }
+    setView('book-detail');
+    updateUrl({ view: 'book-detail', bookId: book.id }, false);
   };
 
   const handleResumeReading = entry => {
-    // Entering from Continue Reading listing -> triggers 3s countdown
     entryFromListingOrLinkRef.current = true;
-
     const matched = books.find(b => b.id === entry.bookId || b.slug === entry.bookId) || books[0];
     setSelectedBook(matched);
     setVol(entry.volume || 'volume-01');
     player.stop();
 
-    fetch(`/api/books/${matched.id}/${entry.volume || 'volume-01'}`)
-      .then(r => r.json())
-      .then(pList => {
-        setPages(pList);
-        const idx = pList.indexOf(normalizePage(entry.page));
-        setPageIndex(idx >= 0 ? idx : 0);
-        setView('reader');
-        if (entry.paragraph) {
-          setHighlightedJumpPara(entry.paragraph);
-        }
-      });
+    updateUrl({
+      view: 'reader',
+      bookId: matched.id,
+      vol: entry.volume || 'volume-01',
+      page: entry.page,
+    }, false);
+
+    const curVol = matched?.volumes?.find(v => v.slug === entry.volume);
+    const pList = curVol?.pages || [];
+    setPages(pList);
+    const idx = pList.indexOf(normalizePage(entry.page));
+    setPageIndex(idx >= 0 ? idx : 0);
+    setView('reader');
+    if (entry.paragraph) {
+      setHighlightedJumpPara(entry.paragraph);
+    }
   };
 
   const handleSelectPageFromDetail = (bookId, volSlug, pageNum) => {
-    // Entering from 20-page batch listing -> triggers 3s countdown
     entryFromListingOrLinkRef.current = true;
-
     player.stop();
     setVol(volSlug);
-    fetch(`/api/books/${bookId}/${volSlug}`)
-      .then(r => r.json())
-      .then(pList => {
-        setPages(pList);
-        const idx = pList.indexOf(normalizePage(pageNum));
-        setPageIndex(idx >= 0 ? idx : 0);
-        setView('reader');
-      });
+
+    const curVol = selectedBook?.volumes?.find(v => v.slug === volSlug);
+    const pList = curVol?.pages || [];
+    setPages(pList);
+
+    const idx = pList.indexOf(normalizePage(pageNum));
+    setPageIndex(idx >= 0 ? idx : 0);
+    setView('reader');
+
+    updateUrl({
+      view: 'reader',
+      bookId,
+      vol: volSlug,
+      page: pageNum,
+    }, false);
+  };
+
+  const handleBackToBook = () => {
+    player.stop();
+    setView('book-detail');
+    if (selectedBook) {
+      updateUrl({ view: 'book-detail', bookId: selectedBook.id }, false);
+    } else {
+      updateUrl({ view: 'home' }, false);
+    }
   };
 
   const handleGoHome = () => {
     player.stop();
     setView('home');
-    updateUrl({ view: 'home' });
+    updateUrl({ view: 'home' }, false);
   };
 
   const handleOpenDevMode = () => {
     player.stop();
     setView('dev');
-    updateUrl({ view: 'dev' });
+    updateUrl({ view: 'dev' }, false);
   };
 
   const handleJumpToDevLocation = item => {
-    // Entering from Dev Mode list -> triggers 3s countdown
     entryFromListingOrLinkRef.current = true;
-
     const matched = books.find(b => b.id === item.bookId || b.slug === item.bookId) || books[0];
     setSelectedBook(matched);
     setVol(item.volume);
     player.stop();
 
-    fetch(`/api/books/${matched.id}/${item.volume}`)
-      .then(r => r.json())
-      .then(pList => {
-        setPages(pList);
-        const idx = pList.indexOf(normalizePage(item.page));
-        setPageIndex(idx >= 0 ? idx : 0);
-        setView('reader');
-        setHighlightedJumpPara(item.paragraph || 0);
-      });
+    const curVol = matched?.volumes?.find(v => v.slug === item.volume);
+    const pList = curVol?.pages || [];
+    setPages(pList);
+    const idx = pList.indexOf(normalizePage(item.page));
+    setPageIndex(idx >= 0 ? idx : 0);
+    setView('reader');
+    setHighlightedJumpPara(item.paragraph || 0);
+
+    updateUrl({
+      view: 'reader',
+      bookId: matched.id,
+      vol: item.volume,
+      page: item.page,
+    }, false);
   };
 
   return (
@@ -636,6 +742,7 @@ export default function App() {
         onOpenDrawer={() => setDrawerOpen(true)}
         onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
         onGoHome={handleGoHome}
+        onBackToBook={handleBackToBook}
       />
 
       {/* Main Views */}
@@ -741,7 +848,6 @@ export default function App() {
           setVol(newVol);
         }}
         onSelectPage={newPage => {
-          // Entering from Drawer listing -> triggers 3s countdown
           entryFromListingOrLinkRef.current = true;
           player.stop();
           const idx = pages.indexOf(newPage);

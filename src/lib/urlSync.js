@@ -32,7 +32,6 @@ export function parseCurrentUrl() {
 
   const params = {};
 
-  // Extract from comma or ampersand separated query string
   if (search) {
     const tokens = search.split(/[&,]/);
     for (const token of tokens) {
@@ -45,7 +44,7 @@ export function parseCurrentUrl() {
     }
   }
 
-  // Also check hash for backward compatibility (e.g. #volume-01/15)
+  // Hash support for legacy links
   if (url.hash && url.hash.length > 1) {
     const hashStr = url.hash.slice(1);
     if (hashStr.includes('/')) {
@@ -55,23 +54,24 @@ export function parseCurrentUrl() {
     }
   }
 
-  // Path routing (e.g. /book/tarikh-at-tabari or /dev)
-  let view = 'home';
   let bookId = params.book || null;
-
-  if (pathParts[0] === 'dev' || params.view === 'dev') {
-    view = 'dev';
-  } else if (pathParts[0] === 'book' && pathParts[1]) {
+  if (!bookId && pathParts[0] === 'book' && pathParts[1]) {
     bookId = pathParts[1];
-    view = 'reader';
-  } else if (bookId || params.vol || params.page) {
-    view = 'reader';
   }
 
   const vol = normalizeVolume(params.vol);
   const page = normalizePage(params.page);
   const word = params.word ? params.word.trim() : null;
   const place = params.place ? Math.max(1, parseInt(params.place, 10) || 1) : 1;
+
+  let view = 'home';
+  if (pathParts[0] === 'dev' || params.view === 'dev') {
+    view = 'dev';
+  } else if (vol || page) {
+    view = 'reader';
+  } else if (bookId || params.view === 'book-detail') {
+    view = 'book-detail';
+  }
 
   return {
     view,
@@ -100,8 +100,14 @@ export function buildUrl({ view = 'home', bookId, vol, page, word, place }) {
 
   const searchParams = new URLSearchParams();
   if (bookId) searchParams.set('book', bookId);
+
+  if (view === 'book-detail') {
+    url.pathname = '/';
+    url.search = searchParams.toString();
+    return url.pathname + (url.search ? '?' + url.search : '');
+  }
+
   if (vol) {
-    // Keep clean volume number or slug
     const vNum = vol.replace(/^volume-0?/, '');
     searchParams.set('vol', vNum || vol);
   }
@@ -121,14 +127,14 @@ export function buildUrl({ view = 'home', bookId, vol, page, word, place }) {
   return url.pathname + (url.search ? '?' + url.search : '');
 }
 
-export function updateUrl(state, replace = true) {
+export function updateUrl(state, replace = false) {
   const newUrl = buildUrl(state);
   const currentUrl = window.location.pathname + window.location.search;
   if (newUrl !== currentUrl) {
     if (replace) {
-      window.history.replaceState(null, '', newUrl);
+      window.history.replaceState({ ...state }, '', newUrl);
     } else {
-      window.history.pushState(null, '', newUrl);
+      window.history.pushState({ ...state }, '', newUrl);
     }
   }
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, ChevronDown, ChevronRight, BookOpen, Clock } from 'lucide-react';
-import { formatTimeAgo } from '../lib/storage.js';
+import { ArrowLeft, BookOpen, Clock, ChevronDown, ChevronRight, Play } from 'lucide-react';
+import { formatTimeAgo, toBnNum } from '../lib/storage.js';
 
 export function BookDetailView({
   book,
@@ -8,31 +8,61 @@ export function BookDetailView({
   onBackToHome,
   onSelectPage,
 }) {
-  const [selectedVol, setSelectedVol] = useState(null);
+  const volumes = book?.volumes || [];
+
+  // Determine initial selected volume (default to last read volume if present, or null for volume selector)
+  const [selectedVol, setSelectedVol] = useState(() => {
+    if (lastRead?.volume && volumes.some(v => v.slug === lastRead.volume)) {
+      return lastRead.volume;
+    }
+    return volumes[0]?.slug || null;
+  });
+
   const [volPages, setVolPages] = useState({});
   const [loadingVol, setLoadingVol] = useState(false);
   const [expandedBatch, setExpandedBatch] = useState(null);
 
-  const volumes = book?.volumes || [];
-
-  // Automatically select the volume that has last read if available
-  useEffect(() => {
-    if (lastRead?.volume && volumes.some(v => v.slug === lastRead.volume)) {
-      setSelectedVol(lastRead.volume);
-    } else if (volumes.length > 0 && !selectedVol) {
-      setSelectedVol(volumes[0].slug);
+  const getBnBookTitle = b => {
+    if (b.id === 'tarikh-at-tabari' || b.slug === 'the-history-of-al-tabari') {
+      return 'তারীখে তাবারী (তারিখুর রুসুল ওয়াল মুলূক)';
     }
-  }, [book, lastRead]);
+    if (b.id === 'ihya-ulumuddin' || b.slug === 'ihya-ulumuddin') {
+      return 'এহইয়াউ উলুমুদ্দীন';
+    }
+    return b.title;
+  };
 
-  // Load pages for a volume
+  const getBnBookAuthor = b => {
+    if (b.id === 'tarikh-at-tabari' || b.slug === 'the-history-of-al-tabari') {
+      return 'ইমাম আবু জাফর মুহাম্মদ ইবনে জারীর আত-তাবারী (রহঃ)';
+    }
+    if (b.id === 'ihya-ulumuddin' || b.slug === 'ihya-ulumuddin') {
+      return 'হুজ্জাতুল ইসলাম ইমাম আবু হামিদ আল-গাযযালী (রহঃ)';
+    }
+    return b.author;
+  };
+
+  // Load pages for selected volume
   const loadPagesForVolume = async volSlug => {
-    if (volPages[volSlug]) return;
+    if (!volSlug) return;
+    if (volPages[volSlug] && volPages[volSlug].length > 0) return;
     setLoadingVol(true);
     try {
       const res = await fetch(`/api/books/${book.id}/${volSlug}`);
       if (res.ok) {
         const pagesList = await res.json();
         setVolPages(prev => ({ ...prev, [volSlug]: pagesList }));
+      } else {
+        // Fallback to static manifest if on static deploy
+        const mRes = await fetch('/data/books.json');
+        if (mRes.ok) {
+          const manifest = await mRes.json();
+          const curBook = manifest.find(b => b.id === book.id);
+          const curVol = curBook?.volumes?.find(v => v.slug === volSlug);
+          if (curVol?.pages) {
+            setVolPages(prev => ({ ...prev, [volSlug]: curVol.pages }));
+          }
+        }
       }
     } catch (e) {
       console.error('Failed to load volume pages:', e);
@@ -44,7 +74,6 @@ export function BookDetailView({
   useEffect(() => {
     if (selectedVol) {
       loadPagesForVolume(selectedVol);
-      // Auto expand batch of last read page if in this volume
       if (lastRead && lastRead.volume === selectedVol && lastRead.page) {
         const pageNum = parseInt(lastRead.page, 10);
         setExpandedBatch(Math.floor((pageNum - 1) / 20));
@@ -54,176 +83,228 @@ export function BookDetailView({
     }
   }, [selectedVol]);
 
-  const toggleVolume = volSlug => {
-    if (selectedVol === volSlug) {
-      setSelectedVol(null);
-    } else {
-      setSelectedVol(volSlug);
-    }
-  };
+  const activeVolObj = volumes.find(v => v.slug === selectedVol) || volumes[0];
+  const pages = (selectedVol && volPages[selectedVol]) || [];
+
+  // Group pages into 20-page batches
+  const batches = [];
+  const batchSize = 20;
+  for (let i = 0; i < pages.length; i += batchSize) {
+    const batchPages = pages.slice(i, i + batchSize);
+    const startNum = parseInt(batchPages[0], 10);
+    const endNum = parseInt(batchPages[batchPages.length - 1], 10);
+    const batchIdx = Math.floor(i / batchSize);
+    const hasLastReadInBatch =
+      lastRead &&
+      lastRead.volume === selectedVol &&
+      lastRead.page &&
+      batchPages.includes(lastRead.page);
+
+    batches.push({
+      batchIndex: batchIdx,
+      startNum,
+      endNum,
+      label: `পৃষ্ঠা ${toBnNum(startNum)} – ${toBnNum(endNum)}`,
+      pages: batchPages,
+      hasLastReadInBatch,
+    });
+  }
 
   return (
     <div className="book-detail-view">
       <button className="back-btn" onClick={onBackToHome}>
-        <ArrowLeft size={16} /> Back to Library
+        <ArrowLeft size={16} /> লাইব্রেরিতে ফিরুন
       </button>
 
       <div className="book-detail-header">
-        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-          {(book?.type || ['Classic']).slice(0, 2).map((t, i) => (
-            <span key={i} className="book-badge">
-              {t}
-            </span>
-          ))}
-        </div>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: 6, color: 'var(--text)' }}>
-          {book?.title}
+        <h1 style={{ fontSize: '1.35rem', fontWeight: 700, marginBottom: 4, color: 'var(--text)' }}>
+          {getBnBookTitle(book)}
         </h1>
-        <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 8 }}>
-          {book?.author}
+        <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
+          {getBnBookAuthor(book)}
         </p>
+
         {lastRead && (
           <div
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              fontSize: '0.82rem',
-              color: 'var(--accent)',
-              fontWeight: 600,
-              background: 'var(--accent-soft)',
-              padding: '4px 10px',
-              borderRadius: 'var(--radius-full)',
+              justifyContent: 'space-between',
+              gap: 12,
+              width: '100%',
+              background: 'var(--last-read-bg)',
+              border: '1px solid var(--last-read-border)',
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-sm)',
               marginTop: 4,
             }}
           >
-            <Clock size={14} />
-            <span>
-              Last read {lastRead.volume?.replace('-', ' ').toUpperCase()} · Page{' '}
-              {parseInt(lastRead.page, 10)} ({formatTimeAgo(lastRead.timestamp)})
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Clock size={16} color="var(--accent)" />
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--last-read-text)' }}>
+                শেষ পঠিত: খণ্ড {toBnNum(lastRead.volume?.replace(/^volume-0?/, ''))} · পৃষ্ঠা{' '}
+                {toBnNum(parseInt(lastRead.page, 10))} ({formatTimeAgo(lastRead.timestamp)})
+              </span>
+            </div>
+            <button
+              className="badge-btn"
+              style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}
+              onClick={() => onSelectPage(book.id, lastRead.volume, lastRead.page)}
+            >
+              <Play size={13} /> পড়ুন
+            </button>
           </div>
         )}
       </div>
 
-      <div className="volume-list">
-        {volumes.map(vol => {
-          const isSelected = selectedVol === vol.slug;
-          const isLastReadVol = lastRead && lastRead.volume === vol.slug;
-          const pages = volPages[vol.slug] || [];
+      {/* Volume Selector Horizontal Tabs / Grid */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>
+            খণ্ড নির্বাচন করুন ({toBnNum(volumes.length)}টি খণ্ড)
+          </h2>
+        </div>
 
-          // Group into 20-page batches
-          const batches = [];
-          const batchSize = 20;
-          for (let i = 0; i < pages.length; i += batchSize) {
-            const batchPages = pages.slice(i, i + batchSize);
-            const startNum = parseInt(batchPages[0], 10);
-            const endNum = parseInt(batchPages[batchPages.length - 1], 10);
-            const batchIdx = Math.floor(i / batchSize);
-            const hasLastReadInBatch =
-              isLastReadVol &&
-              lastRead.page &&
-              batchPages.includes(lastRead.page);
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+            gap: 8,
+            maxHeight: '260px',
+            overflowY: 'auto',
+            padding: '4px',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+          }}
+        >
+          {volumes.map(v => {
+            const isCur = v.slug === selectedVol;
+            const isLastReadVol = lastRead && lastRead.volume === v.slug;
+            const volNum = parseInt(v.slug.replace('volume-', ''), 10);
 
-            batches.push({
-              batchIndex: batchIdx,
-              startNum,
-              endNum,
-              label: `Pages ${startNum} – ${endNum}`,
-              pages: batchPages,
-              hasLastReadInBatch,
-            });
-          }
-
-          return (
-            <div
-              key={vol.slug}
-              className={`volume-card ${isLastReadVol ? 'has-last-read' : ''}`}
-            >
-              <div
-                className="volume-card-header"
-                onClick={() => toggleVolume(vol.slug)}
+            return (
+              <button
+                key={v.slug}
+                onClick={() => setSelectedVol(v.slug)}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: isCur
+                    ? '2px solid var(--accent)'
+                    : isLastReadVol
+                    ? '1.5px solid var(--last-read-border)'
+                    : '1px solid var(--border)',
+                  background: isCur
+                    ? 'var(--accent-soft)'
+                    : isLastReadVol
+                    ? 'var(--last-read-bg)'
+                    : 'var(--surface-subtle)',
+                  color: isCur ? 'var(--accent)' : 'var(--text)',
+                  fontWeight: isCur || isLastReadVol ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                  transition: 'var(--transition)',
+                }}
               >
-                <div className="volume-label">
-                  <BookOpen size={18} color="var(--accent)" />
-                  <span>{vol.label || vol.slug}</span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {isLastReadVol && (
-                    <span className="last-read-tag">
-                      Last read {formatTimeAgo(lastRead.timestamp)}
-                    </span>
-                  )}
-                  {isSelected ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                </div>
-              </div>
-
-              {isSelected && (
-                <div className="volume-body">
-                  {loadingVol && !pages.length ? (
-                    <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)' }}>
-                      Loading pages…
-                    </div>
-                  ) : (
-                    <div className="batches-container">
-                      {batches.map(batch => {
-                        const isBatchExpanded = expandedBatch === batch.batchIndex;
-
-                        return (
-                          <div
-                            key={batch.batchIndex}
-                            className={`batch-row ${batch.hasLastReadInBatch ? 'has-last-read' : ''}`}
-                          >
-                            <div
-                              className="batch-header"
-                              onClick={() =>
-                                setExpandedBatch(isBatchExpanded ? null : batch.batchIndex)
-                              }
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span>{batch.label}</span>
-                                {batch.hasLastReadInBatch && (
-                                  <span className="last-read-tag" style={{ fontSize: '0.68rem' }}>
-                                    Page {parseInt(lastRead.page, 10)}
-                                  </span>
-                                )}
-                              </div>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                {isBatchExpanded ? '▲' : '▼'}
-                              </span>
-                            </div>
-
-                            {isBatchExpanded && (
-                              <div className="batch-pages-grid">
-                                {batch.pages.map(p => {
-                                  const isLastReadPage =
-                                    isLastReadVol && String(p) === String(lastRead.page);
-
-                                  return (
-                                    <div
-                                      key={p}
-                                      className={`page-cell ${isLastReadPage ? 'is-last-read' : ''}`}
-                                      onClick={() => onSelectPage(book.id, vol.slug, p)}
-                                    >
-                                      <span>Page {parseInt(p, 10)}</span>
-                                      {isLastReadPage && <small>Last read</small>}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+                <span>খণ্ড {toBnNum(volNum)}</span>
+                {isLastReadVol && (
+                  <span style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 600 }}>
+                    শেষ পড়া
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* 20-Page Batches for Currently Selected Volume */}
+      {selectedVol && (
+        <div style={{ marginTop: 24 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+              paddingBottom: 8,
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <BookOpen size={17} color="var(--accent)" />
+              খণ্ড {toBnNum(parseInt(selectedVol.replace('volume-', ''), 10))} এর পৃষ্ঠাসমূহ ({toBnNum(pages.length)} পৃষ্ঠা)
+            </h3>
+          </div>
+
+          {loadingVol && !pages.length ? (
+            <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
+              পৃষ্ঠাসমূহ লোড হচ্ছে…
+            </div>
+          ) : (
+            <div className="batches-container">
+              {batches.map(batch => {
+                const isBatchExpanded = expandedBatch === batch.batchIndex;
+
+                return (
+                  <div
+                    key={batch.batchIndex}
+                    className={`batch-row ${batch.hasLastReadInBatch ? 'has-last-read' : ''}`}
+                  >
+                    <div
+                      className="batch-header"
+                      onClick={() =>
+                        setExpandedBatch(isBatchExpanded ? null : batch.batchIndex)
+                      }
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>{batch.label}</span>
+                        {batch.hasLastReadInBatch && (
+                          <span className="last-read-tag" style={{ fontSize: '0.72rem' }}>
+                            শেষ পড়া: পৃষ্ঠা {toBnNum(parseInt(lastRead.page, 10))}
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        {isBatchExpanded ? '▲' : '▼'}
+                      </span>
+                    </div>
+
+                    {isBatchExpanded && (
+                      <div className="batch-pages-grid">
+                        {batch.pages.map(p => {
+                          const isLastReadPage =
+                            lastRead &&
+                            lastRead.volume === selectedVol &&
+                            String(p) === String(lastRead.page);
+                          const pageNum = parseInt(p, 10);
+
+                          return (
+                            <div
+                              key={p}
+                              className={`page-cell ${isLastReadPage ? 'is-last-read' : ''}`}
+                              onClick={() => onSelectPage(book.id, selectedVol, p)}
+                            >
+                              <span>পৃষ্ঠা {toBnNum(pageNum)}</span>
+                              {isLastReadPage && <small>শেষ পঠিত</small>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

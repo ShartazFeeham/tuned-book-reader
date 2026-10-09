@@ -1,5 +1,6 @@
 import React from 'react';
-import { Menu, Sun, Moon, BookOpen, Sparkles, Sliders, Home } from 'lucide-react';
+import { Menu, Sun, Moon, BookOpen, Sparkles, Sliders, Home, ArrowLeft } from 'lucide-react';
+import { toBnNum } from '../lib/storage.js';
 
 export function Header({
   view,
@@ -13,6 +14,7 @@ export function Header({
   onOpenDrawer,
   onOpenVoiceSettings,
   onGoHome,
+  onBackToBook,
 }) {
   // Cycle theme: light -> dark -> sepia -> light
   const cycleTheme = () => {
@@ -27,23 +29,36 @@ export function Header({
     return <span style={{ fontSize: '1.05rem', fontWeight: 'bold' }}>📜</span>;
   };
 
+  const volNum = vol ? vol.replace(/^volume-0?/, '') : '';
+  const pageNum = page ? parseInt(page, 10) : '';
+
   return (
     <header className="app-header">
       <div className="header-left">
         {view === 'reader' && (
-          <button
-            className="icon-btn"
-            title="Page Navigation Menu"
-            onClick={onOpenDrawer}
-            aria-label="Open menu"
-          >
-            <Menu size={20} />
-          </button>
+          <>
+            <button
+              className="icon-btn"
+              title="খণ্ডের তালিকায় ফিরুন"
+              onClick={onBackToBook}
+              aria-label="Back to book"
+            >
+              <ArrowLeft size={19} />
+            </button>
+            <button
+              className="icon-btn"
+              title="পৃষ্ঠা ও খণ্ড নেভিগেশন ড্রয়ার"
+              onClick={onOpenDrawer}
+              aria-label="Open menu"
+            >
+              <Menu size={20} />
+            </button>
+          </>
         )}
         {view !== 'home' && (
           <button
             className="icon-btn"
-            title="Back to Home"
+            title="লাইব্রেরি হোমে যান"
             onClick={onGoHome}
             aria-label="Home"
           >
@@ -56,21 +71,21 @@ export function Header({
         {view === 'reader' && (
           <>
             <div className="header-title">
-              {vol ? vol.replace('-', ' ').toUpperCase() : ''} · Page {page ? parseInt(page, 10) : ''}
+              {volNum ? `খণ্ড ${toBnNum(volNum)}` : ''} · পৃষ্ঠা {toBnNum(pageNum)}
             </div>
-            <div className="header-subtitle">{book?.title || 'Tuned Book Reader'}</div>
+            <div className="header-subtitle">{book?.title || 'টিউনিং বুক রিডার'}</div>
           </>
         )}
         {view === 'book-detail' && (
-          <div className="header-title">{book?.title || 'Book Volumes'}</div>
+          <div className="header-title">{book?.title || 'কিতাবের খণ্ডসমূহ'}</div>
         )}
         {view === 'home' && (
-          <div className="header-title" style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>
-            Tuned Book Reader
+          <div className="header-title" style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: '1.05rem' }}>
+            টিউনিং বুক রিডার
           </div>
         )}
         {view === 'dev' && (
-          <div className="header-title">Dev Mode · Flagged Words</div>
+          <div className="header-title">দেব মোড · চিহ্নিত শব্দ তালিকা</div>
         )}
       </div>
 
@@ -78,17 +93,17 @@ export function Header({
         {view === 'reader' && (
           <button
             className={`badge-btn ${origText ? '' : 'active'}`}
-            title={origText ? 'Showing Original Text (Click for Refined)' : 'Showing Refined Text (Click for Original)'}
+            title={origText ? 'মূল পাঠ দেখানো হচ্ছে (পরিশোধিত পাঠের জন্য ক্লিক করুন)' : 'পরিশোধিত পাঠ দেখানো হচ্ছে (মূল পাঠের জন্য ক্লিক করুন)'}
             onClick={onOrigTextToggle}
           >
             {origText ? <BookOpen size={15} /> : <Sparkles size={15} />}
-            <span>{origText ? 'Original' : 'Refined'}</span>
+            <span>{origText ? 'মূল রূপ' : 'পরিশোধিত'}</span>
           </button>
         )}
 
         <button
           className="icon-btn"
-          title={`Switch theme (current: ${theme})`}
+          title={`থিম পরিবর্তন করুন (বর্তমান: ${theme})`}
           onClick={cycleTheme}
           aria-label="Switch theme"
         >
@@ -98,7 +113,7 @@ export function Header({
         {view === 'reader' && (
           <button
             className="icon-btn"
-            title="Voice & Audio Settings"
+            title="আওয়াজ ও রিডার সেটিংস"
             onClick={onOpenVoiceSettings}
             aria-label="Voice settings"
           >

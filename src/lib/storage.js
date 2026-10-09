@@ -39,6 +39,12 @@ export function savePreferences(prefs) {
   setStorage(PREFS_KEY, { ...current, ...prefs });
 }
 
+// Convert numbers to Bengali digits
+export function toBnNum(num) {
+  const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return String(num).replace(/\d/g, d => bnDigits[d]);
+}
+
 // History structure per book: { [bookId]: { bookId, bookTitle, volume, page, paragraph, word, place, timestamp } }
 export function getReadingHistory() {
   return getStorage(HISTORY_KEY, {});
@@ -69,14 +75,14 @@ export function formatTimeAgo(timestamp) {
   if (!timestamp) return '';
   const now = Date.now();
   const diffSec = Math.floor((now - timestamp) / 1000);
-  if (diffSec < 60) return 'Just now';
+  if (diffSec < 60) return 'এইমাত্র';
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} min${diffMin > 1 ? 's' : ''} ago`;
+  if (diffMin < 60) return `${toBnNum(diffMin)} মিনিট আগে`;
   const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  if (diffHours < 24) return `${toBnNum(diffHours)} ঘণ্টা আগে`;
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 30) return `${diffDays} days ago`;
+  if (diffDays === 1) return 'গতকাল';
+  if (diffDays < 30) return `${toBnNum(diffDays)} দিন আগে`;
   const diffMonths = Math.floor(diffDays / 30);
-  return `${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`;
+  return `${toBnNum(diffMonths)} মাস আগে`;
 }
