@@ -10,6 +10,49 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    /* Suppress Netlify collaborative drawer, badge, and banners completely */
+    [data-netlify-drawer],
+    #netlify-drawer,
+    .netlify-badge,
+    #netlify-banner,
+    div[class*="netlify-feedback"],
+    div[id*="netlify-feedback"],
+    div[class*="feedback-badge"],
+    iframe[src*="netlify"],
+    #netlify-drawer-iframe,
+    .netlify-feedback-banner,
+    a[href*="netlify.com"][class*="badge"],
+    div[class*="netlify"] {
+      display: none !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+      opacity: 0 !important;
+      width: 0 !important;
+      height: 0 !important;
+      z-index: -99999 !important;
+      position: absolute !important;
+      left: -99999px !important;
+      top: -99999px !important;
+    }
+  </style>
+  <script>
+    window.NETLIFY_DISABLE_DRAWER = true;
+    window.__NETLIFY_DISABLE_DRAWER = true;
+    (function() {
+      function purgeNetlify() {
+        var elements = document.querySelectorAll('[data-netlify-drawer], #netlify-drawer, .netlify-badge, #netlify-banner, iframe[src*="netlify"], #netlify-drawer-iframe, div[class*="netlify-feedback"], div[class*="feedback-badge"]');
+        for (var i = 0; i < elements.length; i++) {
+          try { elements[i].remove(); } catch (e) {}
+        }
+      }
+      if (window.MutationObserver) {
+        new MutationObserver(purgeNetlify).observe(document.documentElement, { childList: true, subtree: true });
+      }
+      window.addEventListener('DOMContentLoaded', purgeNetlify);
+      window.addEventListener('load', purgeNetlify);
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>
